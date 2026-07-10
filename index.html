@@ -903,10 +903,10 @@ function render(){
       if(sc.survival){
         const pT=sc.survival.cell.pT;
         q("survCones").innerHTML =
-          coneHTML("+350t",pT[0],"var(--good)")+coneHTML("+550t",pT[2],"var(--blue)")+
-          coneHTML("+750t",pT[4],"var(--vio)")+coneHTML("+950t",pT[6],"var(--gold)");
+          coneHTML("+350t more",pT[0],"var(--good)")+coneHTML("+550t more",pT[2],"var(--blue)")+
+          coneHTML("+750t more",pT[4],"var(--vio)")+coneHTML("+950t more",pT[6],"var(--gold)");
         set("survNote","Cell n="+sc.survival.cell.n+" · median further +"+Math.round(sc.survival.cell.q[0])+"t · p90 +"+Math.round(sc.survival.cell.q[2])+"t (train-era fields, "+["calm","normal","hot"][sc.survival.cb]+" clock)");
-      } else { q("survCones").innerHTML=""; set("survNote","Runway too young for the survival table."); }
+      } else { q("survCones").innerHTML=""; set("survNote","Runway <350t young — read the Direction Field ladders for odds until the survival table opens."); }
     } else { set("runwayMain","NO ACTIVE RUNWAY"); cls("runwayMain","big gold"); set("runwaySub","Between ignitions."); q("survCones").innerHTML=""; }
     // future
     const ren=sc.renewal;

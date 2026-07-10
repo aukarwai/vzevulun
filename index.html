@@ -141,6 +141,8 @@ body{padding:0 0 30px}
 .btnrow{display:flex;gap:5px;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
 .btnrow::-webkit-scrollbar{display:none}
 .btnrow button{flex:0 0 auto;padding:5px 9px;font-size:10.5px;white-space:nowrap;border-radius:8px}
+.pastcf{font-size:10px;color:var(--dim);opacity:.7;margin-top:1px;letter-spacing:.2px}
+.pkrow{margin-top:3px;font-size:11px;color:var(--dim);white-space:nowrap;font-variant-numeric:tabular-nums}
 </style>
 </head>
 <body>
@@ -198,6 +200,7 @@ body{padding:0 0 30px}
       <div class="kv"><span>Retrace</span><b id="rwRetr">—</b></div>
       <div class="kv"><span>Pace</span><b id="rwPace">—</b></div>
     </div>
+      <div class="pkrow" id="rwPeak"></div>
     <div class="kv guardKv"><span>Flip hazard · age-conditioned (shadow)</span><b id="zvHazard">—</b></div>
     <div class="cardTitle" style="margin-top:8px">Runway survival · P(extracts ≥ +T more)</div>
     <div id="survCones"></div>
@@ -752,8 +755,8 @@ function extractAllLegs(){
   const c=CORE.c;if(!c||c.length<300)return[];const legs=[],R=350;let d=0,extreme=c[0],start=0,spx=c[0];
   for(let i=1;i<c.length;i++){
     if(d===0){if(c[i]-spx>=R){d=1;extreme=c[i];start=0}else if(spx-c[i]>=R){d=-1;extreme=c[i];start=0}continue}
-    if(d===1){if(c[i]>extreme)extreme=c[i];if(extreme-c[i]>=R){legs.push({dir:1,start,end:i,ext:extreme-spx});d=-1;spx=extreme;start=i;extreme=c[i]}}
-    else{if(c[i]<extreme)extreme=c[i];if(c[i]-extreme>=R){legs.push({dir:-1,start,end:i,ext:spx-extreme});d=1;spx=extreme;start=i;extreme=c[i]}}
+    if(d===1){if(c[i]>extreme)extreme=c[i];if(extreme-c[i]>=R){legs.push({dir:1,start,end:i,ext:extreme-spx,spx:spx,epk:extreme});d=-1;spx=extreme;start=i;extreme=c[i]}}
+    else{if(c[i]<extreme)extreme=c[i];if(c[i]-extreme>=R){legs.push({dir:-1,start,end:i,ext:spx-extreme,spx:spx,epk:extreme});d=1;spx=extreme;start=i;extreme=c[i]}}
   }
   return legs;
 }
@@ -772,7 +775,7 @@ function archiveLegs(legs){
   for(const L of legs){
     const t0=CORE.t[L.start], t1=CORE.t[L.end]; if(t0==null||t1==null)continue;
     const k=legKey(t0); if(seen.has(k))continue;
-    P32.history.push({k,dir:L.dir,t0,t1,ipx:CORE.c[L.start],fpx:CORE.c[L.end],ext:Math.round(L.ext),dur:L.end-L.start});
+    P32.history.push({k,dir:L.dir,t0,t1,ipx:(L.spx!=null?L.spx:CORE.c[L.start]),fpx:(L.epk!=null?L.epk:CORE.c[L.end]),cfx:(CORE.c[L.start]!=null?CORE.c[L.start]:null),ext:Math.round(L.ext),dur:L.end-L.start});
     seen.add(k); added++;
   }
   if(added){P32.history.sort((a,b)=>a.t0-b.t0);saveP32History()}
@@ -794,7 +797,9 @@ function pastListRender(){
     if(day!==lastDay){html+=pastDayHTML(day);lastDay=day}
     const dir=r.dir===1?"LONG":"SHORT",cls=r.dir===1?"good":"bad";
       const t=fmtHM(r.t0),tD=fmtHM(r.t1),ip=fmtPrice(r.ipx/TICK_MULT),fp=fmtPrice(r.fpx/TICK_MULT);
-      html+=`<div class="past"><b class="${cls}">${dir}</b> ${t}→${tD} @ ${ip}→${fp} · <b>+${r.ext}t</b> in ${r.dur}m</div>`;}
+      const cf=(r.cfx!=null)?fmtPrice(r.cfx/TICK_MULT):null;
+      const sub=(cf&&cf!==ip)?`<div class="pastcf">confirmed @ ${cf}</div>`:"";
+      html+=`<div class="past"><b class="${cls}">${dir}</b> ${t}→${tD} @ ${ip}→${fp} · <b>+${r.ext}t</b> in ${r.dur}m${sub}</div>`;}
   el.innerHTML=html;
 }
 function updateCurRunway(legs){
@@ -802,7 +807,7 @@ function updateCurRunway(legs){
   const c=CORE.c;if(!c||!c.length){return}
   const lastEnd=legs.length?legs[legs.length-1].end:0;
   const dir=(typeof CORE!=="undefined"&&CORE.leg&&CORE.leg.dir)||0;
-  if(dir!==0){const _gi=CORE.leg.startIdx;const sPx=(_gi!=null&&CORE.c&&CORE.c[_gi]!=null)?CORE.c[_gi]:(CORE.leg.startPx?CORE.leg.startPx:c[CORE.leg.start||lastEnd]);
+  if(dir!==0){const sPx=(CORE.leg.startPx!=null)?CORE.leg.startPx:c[CORE.leg.start||lastEnd];
     const st=CORE.t[CORE.leg.start!=null?CORE.leg.start:lastEnd];
     const age=Math.round(CORE.leg.age!=null?CORE.leg.age:(c.length-1-lastEnd));
     const dirTxt=dir===1?"LONG":"SHORT";
@@ -923,8 +928,9 @@ function render(){
     if(L.dir!==0){
       const dirTxt=L.dir===1?"LONG":"SHORT";
       set("runwayMain",dirTxt+" RUNWAY LIVE"); cls("runwayMain","big "+(L.dir===1?"good":"bad"));
-      {const _si=(L.startIdx!=null&&L.startIdx>=0)?L.startIdx:null;const _t0=(_si!=null&&CORE.t&&CORE.t[_si]!=null)?CORE.t[_si]:null;const _mins=_t0!=null?Math.max(0,Math.round((now()-_t0)/60000)):Math.round(L.age);const _hm=_t0!=null?new Date(_t0).toLocaleTimeString("en-GB",{hour12:false,hour:"2-digit",minute:"2-digit"}):"—";set("runwaySub","Ignited "+_hm+" · "+_mins+"m ago from "+fmtPrice(((L.startIdx!=null&&CORE.c&&CORE.c[L.startIdx]!=null)?CORE.c[L.startIdx]:L.startPx)/TICK_MULT));}
-      set("rwExt","+"+Math.round(L.ext)+"t"+((L.extreme!=null)?" · pk "+fmtPrice(L.extreme/TICK_MULT)+((L.extIdx!=null&&CORE.t&&CORE.t[L.extIdx]!=null)?" @ "+fmtHM(CORE.t[L.extIdx]):""):"")); set("rwAge",Math.round(L.age)+"m");
+      {const _si=(L.startIdx!=null&&L.startIdx>=0)?L.startIdx:null;const _t0=(_si!=null&&CORE.t&&CORE.t[_si]!=null)?CORE.t[_si]:null;const _mins=_t0!=null?Math.max(0,Math.round((now()-_t0)/60000)):Math.round(L.age);const _hm=_t0!=null?new Date(_t0).toLocaleTimeString("en-GB",{hour12:false,hour:"2-digit",minute:"2-digit"}):"—";const _org=(L.startPx!=null)?L.startPx:null;const _cfm=(L.startIdx!=null&&CORE.c&&CORE.c[L.startIdx]!=null)?CORE.c[L.startIdx]:null;const _op=_org!=null?fmtPrice(_org/TICK_MULT):"—";const _cp=_cfm!=null?fmtPrice(_cfm/TICK_MULT):null;set("runwaySub","Ignited "+_hm+" · "+_mins+"m ago · Origin "+_op+(_cp&&_cp!==_op?" · confirmed @ "+_cp:""));}
+      set("rwExt","+"+Math.round(L.ext)+"t");
+      set("rwPeak",(L.extreme!=null)?("pk "+fmtPrice(L.extreme/TICK_MULT)+(L.dir===1?" \u25b2":L.dir===-1?" \u25bc":"")+((L.extIdx!=null&&CORE.t&&CORE.t[L.extIdx]!=null)?" @ "+fmtHM(CORE.t[L.extIdx]):"")):""); set("rwAge",Math.round(L.age)+"m");
       set("rwRetr","−"+Math.round(L.retr)+"t"); set("rwPace",(L.age>0?(L.ext/L.age).toFixed(0):"—")+" t/m");
       if(sc.survival){
         const pT=sc.survival.cell.pT;

@@ -520,26 +520,26 @@ function rebuildSeries(){
 /* exact mirror of labels.py zigzag (R=350) incl. startup rule */
 function zigzagState(c){
   const n=c.length, R=350;
-  let d=0, extreme=c[0], start=0, spx=c[0];
+  let d=0, extreme=c[0], start=0, spx=c[0], extIdx=0;
   let ext=0, age=0, retr=0;
   for(let i=1;i<n;i++){
     if(d===0){
-      if(c[i]-spx>=R){ d=1; extreme=c[i]; start=0; spx=c[0]; }
-      else if(spx-c[i]>=R){ d=-1; extreme=c[i]; start=0; spx=c[0]; }
+      if(c[i]-spx>=R){ d=1; extreme=c[i]; start=0; spx=c[0]; extIdx=i; }
+      else if(spx-c[i]>=R){ d=-1; extreme=c[i]; start=0; spx=c[0]; extIdx=i; }
       continue;
     }
     if(d===1){
-      if(c[i]>extreme) extreme=c[i];
-      if(extreme-c[i]>=R){ d=-1; spx=extreme; start=i; extreme=c[i]; }
+      if(c[i]>extreme){ extreme=c[i]; extIdx=i; }
+      if(extreme-c[i]>=R){ d=-1; spx=extreme; start=i; extreme=c[i]; extIdx=i; }
     } else {
-      if(c[i]<extreme) extreme=c[i];
-      if(c[i]-extreme>=R){ d=1; spx=extreme; start=i; extreme=c[i]; }
+      if(c[i]<extreme){ extreme=c[i]; extIdx=i; }
+      if(c[i]-extreme>=R){ d=1; spx=extreme; start=i; extreme=c[i]; extIdx=i; }
     }
     ext = d===1? (extreme-spx) : (spx-extreme);
     age = i-start;
     retr = d===1? (extreme-c[i]) : (c[i]-extreme);
   }
-  return {dir:d, ext, age, retr, startIdx:start, extreme, startPx:spx};
+  return {dir:d, ext, age, retr, startIdx:start, extreme, startPx:spx, extIdx};
 }
 
 function computeFeatureMap(){
@@ -924,7 +924,7 @@ function render(){
       const dirTxt=L.dir===1?"LONG":"SHORT";
       set("runwayMain",dirTxt+" RUNWAY LIVE"); cls("runwayMain","big "+(L.dir===1?"good":"bad"));
       {const _si=(L.startIdx!=null&&L.startIdx>=0)?L.startIdx:null;const _t0=(_si!=null&&CORE.t&&CORE.t[_si]!=null)?CORE.t[_si]:null;const _mins=_t0!=null?Math.max(0,Math.round((now()-_t0)/60000)):Math.round(L.age);const _hm=_t0!=null?new Date(_t0).toLocaleTimeString("en-GB",{hour12:false,hour:"2-digit",minute:"2-digit"}):"—";set("runwaySub","Ignited "+_hm+" · "+_mins+"m ago from "+fmtPrice(((L.startIdx!=null&&CORE.c&&CORE.c[L.startIdx]!=null)?CORE.c[L.startIdx]:L.startPx)/TICK_MULT));}
-      set("rwExt","+"+Math.round(L.ext)+"t"); set("rwAge",Math.round(L.age)+"m");
+      set("rwExt","+"+Math.round(L.ext)+"t"+((L.extreme!=null)?" · pk "+fmtPrice(L.extreme/TICK_MULT)+((L.extIdx!=null&&CORE.t&&CORE.t[L.extIdx]!=null)?" @ "+fmtHM(CORE.t[L.extIdx]):""):"")); set("rwAge",Math.round(L.age)+"m");
       set("rwRetr","−"+Math.round(L.retr)+"t"); set("rwPace",(L.age>0?(L.ext/L.age).toFixed(0):"—")+" t/m");
       if(sc.survival){
         const pT=sc.survival.cell.pT;

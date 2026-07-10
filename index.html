@@ -137,6 +137,10 @@ body{padding:0 0 30px}
 .hold{display:grid;gap:12px;margin-top:2px}
 @media (min-width:1024px){.hold{grid-template-columns:1fr 1fr}.holdWide{grid-column:1/-1}}
 .keel{max-width:760px;margin:2px auto 0}
+
+.btnrow{display:flex;gap:5px;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
+.btnrow::-webkit-scrollbar{display:none}
+.btnrow button{flex:0 0 auto;padding:5px 9px;font-size:10.5px;white-space:nowrap;border-radius:8px}
 </style>
 </head>
 <body>
@@ -226,7 +230,7 @@ body{padding:0 0 30px}
     </div>
     <div class="past" id="curRunway">No live runway.</div>
     <div id="pastList" class="small">Building past field…</div>
-    <div style="margin-top:8px">
+    <div class="btnrow" style="margin-top:8px">
       <button onclick="exportRunwayHistory('json')">📥 Export JSON</button>
       <button onclick="exportRunwayHistory('txt')" style="margin-left:6px">📄 Export TXT</button>
     </div>

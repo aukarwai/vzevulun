@@ -342,7 +342,9 @@ function fmtPrice(p){return p?Number(p).toFixed(7):"—"}
 function p29Log(msg){const e=q("reasonLog"); if(!e)return; const t=new Date().toLocaleTimeString("en-GB",{hour12:false}); e.textContent=`[${t}] ${msg}\n`+e.textContent.slice(0,5000)}
 function savePapillonCandles(){try{localStorage.setItem(STORE_CANDLES,JSON.stringify(P29.candles.slice(-MAX_CANDLES)))}catch(e){}}
 function loadPapillonCandles(){try{const arr=JSON.parse(localStorage.getItem(STORE_CANDLES)||"[]"); if(Array.isArray(arr)){P29.candles=arr.filter(c=>c&&c.t&&c.c).slice(-MAX_CANDLES); p29Log("Restored "+P29.candles.length+" Papillon candles from memory")}}catch(e){}}
-async function bootstrapPapillonCandles(){let loaded=false; for(const url of PAPILLON_REST_KLINES){try{const r=await fetch(url,{cache:"no-store"}); const j=await r.json(); const data=Array.isArray(j)?j:(Array.isArray(j.data)?j.data:[]); if(data.length){P29.candles=data.map(k=>Array.isArray(k)?{t:+k[0]||+k[6]||Date.now(),o:+k[1],h:+k[2],l:+k[3],c:+k[4],v:+k[5]||0}:{t:+(k.time||k.openTime||k.T||k.t||Date.now()),o:+(k.open||k.o),h:+(k.high||k.h),l:+(k.low||k.l),c:+(k.close||k.c),v:+(k.volume||k.v||0)}).filter(c=>c.c>0&&c.h>0&&c.l>0).slice(-MAX_CANDLES); if(P29.candles.length){P29.price=P29.candles[P29.candles.length-1].c;P29.lastTickAt=now();savePapillonCandles();loaded=true;p29Log("Bootstrapped "+P29.candles.length+" Papillon candles from REST ("+url.split("/")[2]+")");break}}}catch(e){}} if(!loaded)p29Log("REST bootstrap unavailable; Papillon candles will build from live pulse")}
+async function bootstrapPapillonCandles(){let loaded=false; for(const url of PAPILLON_REST_KLINES){try{const r=await fetch(url,{cache:"no-store"}); const j=await r.json(); const data=Array.isArray(j)?j:(Array.isArray(j.data)?j.data:[]); if(data.length){const seed=data.map(k=>Array.isArray(k)?{t:+k[0]||+k[6]||Date.now(),o:+k[1],h:+k[2],l:+k[3],c:+k[4],v:+k[5]||0}:{t:+(k.time||k.openTime||k.T||k.t||Date.now()),o:+(k.open||k.o),h:+(k.high||k.h),l:+(k.low||k.l),c:+(k.close||k.c),v:+(k.volume||k.v||0)}).filter(c=>c.c>0&&c.h>0&&c.l>0);
+        const mm=new Map(); for(const c of (P29.candles||[])) mm.set(Math.round(c.t/60000),c); for(const c of seed) mm.set(Math.round(c.t/60000),c);
+        P29.candles=Array.from(mm.values()).sort((a,b)=>a.t-b.t).slice(-MAX_CANDLES); if(P29.candles.length){P29.price=P29.candles[P29.candles.length-1].c;P29.lastTickAt=now();savePapillonCandles();loaded=true;p29Log("Bootstrapped "+P29.candles.length+" Papillon candles from REST ("+url.split("/")[2]+")");break}}}catch(e){}} if(!loaded)p29Log("REST bootstrap unavailable; Papillon candles will build from live pulse")}
 function minuteBucket(ts){return Math.floor(ts/60000)*60000}
 function updatePapillonCandle(price,ts){if(!price||price<=0)return; const t=minuteBucket(ts||now()); let last=P29.candles[P29.candles.length-1]; if(last&&last.t===t){last.h=Math.max(+last.h,price);last.l=Math.min(+last.l,price);last.c=price;last.v=(+last.v||0)+1;P29.candles[P29.candles.length-1]=last}else{const prev=last?+last.c:price;P29.candles.push({t,o:prev,h:Math.max(prev,price),l:Math.min(prev,price),c:price,v:1})} if(P29.candles.length>MAX_CANDLES)P29.candles=P29.candles.slice(-MAX_CANDLES); savePapillonCandles()}
 async function decodePapillonPulse(data){if(typeof data==="string")return data; let buf=null; if(data instanceof Blob)buf=await data.arrayBuffer(); else if(data instanceof ArrayBuffer)buf=data; if(!buf)return ""; try{if(window.pako)return window.pako.ungzip(new Uint8Array(buf),{to:"string"})}catch(e){} try{return new TextDecoder("utf-8").decode(buf)}catch(e){return ""}}
@@ -757,18 +759,38 @@ function pastRowHTML(L){
     const ip=fmtPrice(CORE.c[L.start]/TICK_MULT),fp=fmtPrice(CORE.c[L.end]/TICK_MULT);
     return `<div class="past"><b class="${cls}">${dir}</b> ${t}→${tD} @ ${ip}→${fp} · <b>+${Math.round(L.ext)}t</b> in ${L.end-L.start}m</div>`;}
 function pastDayHTML(label){return `<div class="past" style="opacity:.6;margin-top:6px;border:0;font-size:11px;letter-spacing:.5px">— ${label} —</div>`;}
+/* ==== permanent completed-runway archive (survives candle-buffer eviction & reloads) ==== */
+function legKey(t0){return String(Math.round(t0/60000))}
+function archiveLegs(legs){
+  P32.history=P32.history||[];
+  const seen=new Set(P32.history.map(r=>r.k));
+  let added=0;
+  for(const L of legs){
+    const t0=CORE.t[L.start], t1=CORE.t[L.end]; if(t0==null||t1==null)continue;
+    const k=legKey(t0); if(seen.has(k))continue;
+    P32.history.push({k,dir:L.dir,t0,t1,ipx:CORE.c[L.start],fpx:CORE.c[L.end],ext:Math.round(L.ext),dur:L.end-L.start});
+    seen.add(k); added++;
+  }
+  if(added){P32.history.sort((a,b)=>a.t0-b.t0);saveP32History()}
+  return P32.history;
+}
+function archivedRows(){ // normalized, newest-first, for rendering + export
+  return (P32.history||[]).slice().sort((a,b)=>b.t0-a.t0);
+}
 function pastListRender(){
   const el=q("pastList");if(!el)return;
   const legs=extractAllLegs();
-  // current (open) runway line
   updateCurRunway(legs);
+  archiveLegs(legs);
+  const rows=archivedRows();
   updateDailySummary(legs);
-  if(!legs.length){el.innerHTML="No completed runways in memory yet.";return}
-  // newest first, grouped by day with a date header when the day changes
+  if(!rows.length){el.innerHTML="No completed runways in memory yet.";return}
   let html="",lastDay="";
-  for(let k=legs.length-1;k>=0;k--){const L=legs[k];const day=fmtDay(CORE.t[L.start]);
+  for(const r of rows){const day=fmtDay(r.t0);
     if(day!==lastDay){html+=pastDayHTML(day);lastDay=day}
-    html+=pastRowHTML(L);}
+    const dir=r.dir===1?"LONG":"SHORT",cls=r.dir===1?"good":"bad";
+      const t=fmtHM(r.t0),tD=fmtHM(r.t1),ip=fmtPrice(r.ipx/TICK_MULT),fp=fmtPrice(r.fpx/TICK_MULT);
+      html+=`<div class="past"><b class="${cls}">${dir}</b> ${t}→${tD} @ ${ip}→${fp} · <b>+${r.ext}t</b> in ${r.dur}m</div>`;}
   el.innerHTML=html;
 }
 function updateCurRunway(legs){
@@ -958,9 +980,9 @@ function logRunwayCompletion(r){
   updateDailySummary();
 }
 function exportRunwayHistory(fmt){
-  fmt=fmt||"json";const legs=extractAllLegs();
+  fmt=fmt||"json";archiveLegs(extractAllLegs());const legs=archivedRows().slice().reverse().map(r=>({start:r.t0/60000|0,end:r.t1/60000|0,dir:r.dir,ext:r.ext,dur:r.dur,t0:r.t0,t1:r.t1,ipx:r.ipx,fpx:r.fpx}));
   if(!legs.length){p29Log("Export skipped · no completed runways yet");alert("No completed runways to export yet.");return}
-  const rows=legs.map(L=>({date:fmtDay(CORE.t[L.start]),start:fmtHM(CORE.t[L.start]),done:fmtHM(CORE.t[L.end]),side:L.dir===1?"LONG":"SHORT",ignitionPrice:fmtPrice(CORE.c[L.start]/TICK_MULT),completionPrice:fmtPrice(CORE.c[L.end]/TICK_MULT),extractedT:Math.round(L.ext),durationM:L.end-L.start}));
+  const rows=legs.map(L=>({date:fmtDay(L.t0),start:fmtHM(L.t0),done:fmtHM(L.t1),side:L.dir===1?"LONG":"SHORT",ignitionPrice:fmtPrice(L.ipx/TICK_MULT),completionPrice:fmtPrice(L.fpx/TICK_MULT),extractedT:L.ext,durationM:L.dur}));
   let blob,ext;
   if(fmt==="txt"){
     let out="CHRONOPAPILLON · Completed Runways\nExported "+new Date().toLocaleString("en-GB")+" · "+PAPILLON_SYMBOL+"\nTotal runways: "+rows.length+"\n";
@@ -983,10 +1005,10 @@ function clearRunwayHistory(){
   updateDailySummary();
 }
 function updateDailySummary(legs){
-  legs=legs||extractAllLegs();const today=new Date().toDateString();
-  let L=0,S=0,tL=0,tS=0;
-  for(const g of legs){if(new Date(CORE.t[g.start]).toDateString()!==today)continue;
-    if(g.dir===1){L++;tL+=g.ext}else{S++;tS+=g.ext}}
+  const rows=(P32.history&&P32.history.length)?P32.history:(legs||extractAllLegs()).map(L=>({t0:CORE.t[L.start],t1:CORE.t[L.end],dir:L.dir,ext:Math.round(L.ext)}));
+  const today=new Date().toDateString();let L=0,S=0,tL=0,tS=0;
+  for(const r of rows){const t0=r.t0!=null?r.t0:CORE.t[r.start];if(t0==null||new Date(t0).toDateString()!==today)continue;
+    if(r.dir===1){L++;tL+=r.ext}else{S++;tS+=r.ext}}
   const tot=L+S;
   set("dailySummary",tot?("Today "+fmtDay(Date.now())+" · "+L+"L / "+S+"S · "+tot+" runways · extracted +"+Math.round(tL+tS)+"t"):"Today "+fmtDay(Date.now())+" · no completed runways yet");
 }

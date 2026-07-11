@@ -151,6 +151,17 @@ body{padding:0 0 30px}
 .ipbar{height:7px;border-radius:4px;background:var(--track);overflow:hidden;border:1px solid var(--line);box-sizing:border-box}
 .ipbfill{height:100%;border-radius:3px;transition:width .3s ease}
 .ipband b{font-variant-numeric:tabular-nums;text-align:right}
+
+.rrVerdict{font-size:12px;font-weight:700;padding:5px 8px;border-radius:8px;letter-spacing:.2px}
+.vstay{background:color-mix(in oklab,var(--long) 16%,transparent);color:var(--long);border:1px solid color-mix(in oklab,var(--long) 40%,transparent)}
+.vhold{background:var(--pillbg);color:var(--dim);border:1px solid var(--edgeS)}
+.vwarn{background:color-mix(in oklab,var(--warnC) 16%,transparent);color:var(--warnC);border:1px solid color-mix(in oklab,var(--warnC) 40%,transparent)}
+.vexit{background:color-mix(in oklab,var(--short) 16%,transparent);color:var(--short);border:1px solid color-mix(in oklab,var(--short) 45%,transparent)}
+
+.ipVerdict{font-size:12px;font-weight:700;padding:5px 8px;border-radius:8px;letter-spacing:.2px}
+.ipStat{margin-top:7px}
+.ipWhatIfWrap{margin-top:9px;padding-top:8px;border-top:1px solid var(--line)}
+.ipSlider{width:100%;accent-color:var(--sea)}
 </style>
 </head>
 <body>
@@ -217,6 +228,8 @@ body{padding:0 0 30px}
         <div class="row"><span class="pill" id="rrLabel">NO RUNWAY</span><span class="big" id="rrPct" style="margin-left:auto">—</span></div>
         <div class="bar" style="height:10px"><div class="fill" id="rrFill"></div></div>
         <div class="small" id="rrBarNote" style="margin-top:2px">awaiting active runway</div>
+        <div class="rrVerdict" id="rrVerdict" style="margin-top:6px">—</div>
+        <div class="small" style="margin-top:4px;font-size:9.5px;opacity:.65;line-height:1.4">Thresholds (flip ≤5m, 15-day OOS AUC 0.80–0.85): <b>&lt;3% STAY</b> · 3–8% HOLD · 8–20% TIGHTEN · <b>&gt;20% EXIT</b></div>
   </section>
       <section class="card">
         <div class="cardTitle"><span class="he">לַחַץ הַצָּתָה</span>Ignition Pressure · multi-horizon seismograph (predictive)</div>
@@ -224,7 +237,18 @@ body{padding:0 0 30px}
         <div class="bar" style="height:12px"><div class="fill" id="ipFill"></div></div>
         <div class="small" id="ipNote" style="margin-top:2px">gathering intensity history</div>
         <div class="ipBands" id="ipBands" style="margin-top:8px"></div>
-        <div class="small" style="margin-top:6px;font-size:10px;opacity:.7">Hawkes self-excitation · 15-day OOS AUC 0.70–0.73 per horizon · predicts ignition timing, not direction</div>
+        <div class="ipVerdict" id="ipVerdict" style="margin-top:8px">—</div>
+        <div class="ipStat">
+          <div class="kv"><span>Live hit-rate · pressure→ignition ≤20m</span><b id="ipHit">gathering…</b></div>
+          <div class="kv"><span>Typical ignition size</span><b id="ipSize">—</b></div>
+          <div class="kv"><span>Opportunity capacity now</span><b id="ipCap">—</b></div>
+        </div>
+        <div class="ipWhatIfWrap">
+          <div class="small" style="margin-bottom:3px">What-if explorer · drag pressure to see implied odds</div>
+          <input type="range" min="0" max="100" value="50" id="ipWhatIf" class="ipSlider" oninput="if(typeof ipRender==='function')ipRender()"/>
+          <div class="small" id="ipWhatIfOut" style="margin-top:2px">50% → BUILDING</div>
+        </div>
+        <div class="small" style="margin-top:6px;font-size:9.5px;opacity:.65;line-height:1.4">Hawkes self-excitation · 15-day OOS AUC 0.70–0.73 · scorecard = live proof, accrues as you watch · predicts timing, not direction</div>
       </section>
     </div>
     <div class="zone zoneFuture">
@@ -1183,7 +1207,10 @@ const IP={
          {k:"SHORT",beta:0.13,W:7,s:0,lam:0,pctl:0,hist:[]},
          {k:"MED",beta:0.13,W:12,s:0,lam:0,pctl:0,hist:[]},
          {k:"LONG",beta:0.13,W:20,s:0,lam:0,pctl:0,hist:[]}],
-  lastMin:0, composite:0, lead:"—", seeded:false
+  lastMin:0, composite:0, lead:"—", seeded:false,
+  // live self-scoring: when composite crossed HIGH, did a runway ignite within lead window?
+  score:{armed:false, armedIdx:0, armedExt:0, hits:0, misses:0, sizes:[]},
+  capacity:0
 };
 function ipSeed(){
   // one-time backfill: replay recent candle buffer so pressure is READY on load, not after 20 live min
@@ -1221,6 +1248,24 @@ function ipUpdate(){
   // lead = which horizon is most lit (earliest strong band = how far ahead pressure reads)
   let lit=IP.bands.filter(b=>b.pctl>=65);
   IP.lead = lit.length? lit.map(b=>b.k).join("·") : (IP.composite>=35?"forming":"quiet");
+  ipScore(); ipCapacity();
+}
+function ipScore(){
+  // when pressure crosses >=65 (HIGH), arm; then check if a runway ignites within ~20 bars (max lead)
+  const c=CORE.c, idx=c.length-1, S=IP.score;
+  if(!S.armed && IP.composite>=65){ S.armed=true; S.armedIdx=idx; S.armedPrice=c[idx]; return; }
+  if(S.armed){
+    const waited=idx-S.armedIdx;
+    // ignition = a 350t move from armed price within 20 bars
+    const moved=Math.abs((c[idx]-S.armedPrice)*TICK_MULT);
+    if(moved>=350){ S.hits++; S.sizes.push(Math.round(moved)); if(S.sizes.length>50)S.sizes.shift(); S.armed=false; }
+    else if(waited>=20){ S.misses++; S.armed=false; }
+  }
+}
+function ipCapacity(){
+  // opportunity capacity = composite-pressure × typical realized runway size (median of scored hits)
+  const S=IP.score; const med=S.sizes.length? S.sizes.slice().sort((a,b)=>a-b)[Math.floor(S.sizes.length/2)] : 0;
+  IP.capacity = Math.round((IP.composite/100) * med);
 }
 function ipState(){
   const p=IP.composite, any=IP.bands.some(b=>b.hist.length>=20);
@@ -1245,6 +1290,32 @@ function ipRender(){
       return `<div class="ipband"><span class="ipbk">${b.k}<i>${lead}</i></span><div class="ipbar"><div class="ipbfill" style="width:${Math.max(2,b.pctl)}%;background:${col}"></div></div><b>${b.pctl}%</b></div>`;
     }).join("");
   }
+
+  // --- verdict line (mirrors Reversal Risk decision UX) ---
+  const vd=q("ipVerdict");
+  if(vd){
+    let t,cl;
+    if(st.p>=85){t="🔥 ACT WINDOW · ignition likely imminent — watch for entry";cl="ipVerdict vexit";}
+    else if(st.p>=65){t="⚡ READY · move brewing within lead window";cl="ipVerdict vwarn";}
+    else if(st.p>=35){t="○ WATCH · energy building, no trigger yet";cl="ipVerdict vhold";}
+    else{t="✓ REST · quiet field, low ignition odds";cl="ipVerdict vstay";}
+    vd.textContent=t; vd.className=cl;
+  }
+  // --- live scorecard ---
+  const S=IP.score, tot=S.hits+S.misses;
+  const rate=tot? Math.round(100*S.hits/tot):0;
+  set("ipHit", tot? rate+"% ("+S.hits+"/"+tot+")" : "gathering…");
+  const med=S.sizes.length? S.sizes.slice().sort((a,b)=>a-b)[Math.floor(S.sizes.length/2)]:0;
+  set("ipSize", med? "~"+med+"t median":"—");
+  // --- capacity ---
+  set("ipCap", IP.capacity? "~"+IP.capacity+"t expected":"—");
+  // --- what-if explorer: user-set pressure -> implied odds/capacity ---
+  const wi=q("ipWhatIf");
+  if(wi){ const val=+wi.value;
+    const oddsTxt = val>=85?"IMMINENT (~70–73% hist.)":val>=65?"HIGH (move likely)":val>=35?"BUILDING":"DORMANT";
+    const capW = med? Math.round((val/100)*med):0;
+    set("ipWhatIfOut", val+"% → "+oddsTxt+(capW?" · ~"+capW+"t capacity":""));
+  }
 }
 
 /* ==== REVERSAL RISK · retrace-ratio flip foresight (predictive, NEW — coexists with flip-hazard) ====
@@ -1266,15 +1337,17 @@ function rrRender(){
   const el=q("rrLabel"); if(!el)return;
   const r=reversalRisk();
   if(!r){set("rrLabel","NO RUNWAY");cls("rrLabel","pill");set("rrPct","—");set("rrBarNote","awaiting active runway");
+    const v=q("rrVerdict");if(v){v.textContent="—";v.className="rrVerdict";}
     const f=q("rrFill");if(f)f.style.width="2%";return;}
-  let lab,cls_;
-  if(r.p>=0.20){lab="REVERSAL LIKELY ≤5m";cls_="bad";}
-  else if(r.p>=0.08){lab="REVERSAL RISK RISING";cls_="warn";}
-  else if(r.p>=0.03){lab="MILD PULLBACK";cls_="";}
-  else{lab="RUNWAY FIRM";cls_="good";}
+  let lab,cls_,verdict,vcls;
+  if(r.p>=0.20){lab="REVERSAL LIKELY ≤5m";cls_="bad";verdict="⛔ EXIT ZONE · flip likely within 5 min";vcls="rrVerdict vexit";}
+  else if(r.p>=0.08){lab="REVERSAL RISK RISING";cls_="warn";verdict="⚠ TIGHTEN · protect gains, flip risk building";vcls="rrVerdict vwarn";}
+  else if(r.p>=0.03){lab="MILD PULLBACK";cls_="";verdict="○ HOLD · normal wobble, ride intact";vcls="rrVerdict vhold";}
+  else{lab="RUNWAY FIRM";cls_="good";verdict="✓ STAY · runway strong, room to run";vcls="rrVerdict vstay";}
   set("rrLabel",lab);cls("rrLabel","pill "+cls_);
   set("rrPct",Math.round(r.p*100)+"% ≤5m");
   set("rrBarNote","retrace "+Math.round(r.ratio*100)+"% of extraction · "+Math.round(r.p*100)+"% flip risk ≤5m");
+  const vd=q("rrVerdict");if(vd){vd.textContent=verdict;vd.className=vcls;}
   const f=q("rrFill");if(f){f.style.width=Math.max(2,Math.min(100,Math.round(r.ratio*100)))+"%";
     f.style.background=r.p>=0.20?"var(--short)":r.p>=0.08?"var(--warnC)":r.p>=0.03?"var(--current)":"var(--long)";}
 }

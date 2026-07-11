@@ -1209,7 +1209,7 @@ const IP={
          {k:"LONG",beta:0.13,W:20,s:0,lam:0,pctl:0,hist:[]}],
   lastMin:0, composite:0, lead:"—", seeded:false,
   // live self-scoring: when composite crossed HIGH, did a runway ignite within lead window?
-  score:{armed:false, armedIdx:0, armedExt:0, hits:0, misses:0, sizes:[]},
+  score:{armed:false, armedIdx:0, armedExt:0, hits:0, misses:0, sizes:[], backfilled:false},
   capacity:0
 };
 function ipSeed(){
@@ -1225,6 +1225,28 @@ function ipSeed(){
   }
   for(const b of IP.bands){const s=b.hist.slice().sort((x,y)=>x-y);let bl=0;for(const x of s){if(x<b.lam)bl++;else break}b.pctl=b.hist.length>10?Math.round(100*bl/b.hist.length):0;}
   IP.lastMin=c.length-1;
+  ipScoreBackfill();
+}
+function ipScoreBackfill(){
+  const c=CORE.c,n=c.length; if(n<80||IP.score.backfilled)return; IP.score.backfilled=true;
+  const bs=IP.bands.map(b=>({beta:b.beta,s:0,hist:[]})); const comp=new Array(n).fill(0);
+  for(let idx=0;idx<n;idx++){
+    const W=Math.min(240,idx||1); let sr=0;
+    for(let i=Math.max(0,idx-W);i<idx;i++){const hi=CORE.h?CORE.h[i]:c[i],lo=CORE.l?CORE.l[i]:c[i];sr+=Math.abs(hi-lo)}
+    const avg=(sr/Math.max(W,1))||1; const hi=CORE.h?CORE.h[idx]:c[idx],lo=CORE.l?CORE.l[idx]:c[idx];
+    const mark=Math.abs(hi-lo)/avg;
+    for(const b of bs){b.s=b.s*Math.exp(-b.beta)+mark;b.hist.push(b.s);}
+    let wsum=0,wt=0;
+    bs.forEach((b,k)=>{const sorted=b.hist.slice(-240).sort((x,y)=>x-y);let bl=0;for(const x of sorted){if(x<b.s)bl++;else break}const pctl=b.hist.length>10?100*bl/Math.min(b.hist.length,240):0;wsum+=pctl*(4-k);wt+=(4-k);});
+    comp[idx]=wsum/wt;
+  }
+  const S=IP.score; let armed=false,aIdx=0,aPrice=0;
+  for(let idx=0;idx<n;idx++){
+    if(!armed && comp[idx]>=65){armed=true;aIdx=idx;aPrice=c[idx];continue;}
+    if(armed){const moved=Math.abs(c[idx]-aPrice),waited=idx-aIdx;
+      if(moved>=350){S.hits++;S.sizes.push(Math.round(moved));if(S.sizes.length>50)S.sizes.shift();armed=false;}
+      else if(waited>=20){S.misses++;armed=false;}}
+  }
 }
 function ipUpdate(){
   const c=CORE.c; if(!c||c.length<40)return;
@@ -1257,7 +1279,7 @@ function ipScore(){
   if(S.armed){
     const waited=idx-S.armedIdx;
     // ignition = a 350t move from armed price within 20 bars
-    const moved=Math.abs((c[idx]-S.armedPrice)*TICK_MULT);
+    const moved=Math.abs(c[idx]-S.armedPrice);
     if(moved>=350){ S.hits++; S.sizes.push(Math.round(moved)); if(S.sizes.length>50)S.sizes.shift(); S.armed=false; }
     else if(waited>=20){ S.misses++; S.armed=false; }
   }

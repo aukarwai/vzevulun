@@ -11,11 +11,11 @@
 :root{color-scheme:light dark;
  --bg:#f3efe3;--panel:#fbf8ee;--panel2:#efe9d6;--ink:#152a20;--dim:#5f7267;--line:#d9d2ba;--edgeS:#cfc7ab;
  --sea:#0e6e53;--sea2:#12876a;--foam:#f7f3e6;--long:#0c7d4e;--short:#a4512a;--warnC:#9c7418;--current:#0e6f7e;--myst:#5d5590;--gold:#96701c;
- --pillbg:#eee8d4;--track:#e6dfc7;--logbg:#f6f2e2;--shadow:0 1px 0 rgba(21,42,32,.06),0 8px 24px -18px rgba(14,60,45,.35)--good:var(--long);--blue:var(--current);--vio:var(--myst);--bad:var(--short);--warn:var(--warnC);}
+ --pillbg:#eee8d4;--track:#e6dfc7;--logbg:#f6f2e2;--shadow:0 1px 0 rgba(21,42,32,.06),0 8px 24px -18px rgba(14,60,45,.35);--good:var(--long);--blue:var(--current);--vio:var(--myst);--bad:var(--short);--warn:var(--warnC);}
 @media (prefers-color-scheme:dark){:root{
  --bg:#06110c;--panel:#0b1a12;--panel2:#08130d;--ink:#eae5d3;--dim:#8ea294;--line:#1c3226;--edgeS:#254434;
  --sea:#2ec695;--sea2:#37d6a3;--foam:#0e211786;--long:#3bd598;--short:#e07b46;--warnC:#d9a83f;--current:#42b6c7;--myst:#a89ee2;--gold:#d6b264;
- --pillbg:#0d211761;--track:#10281c;--logbg:#08150e;--shadow:0 0 0 1px rgba(46,198,149,.05),0 14px 34px -22px rgba(0,0,0,.9)--good:var(--long);--blue:var(--current);--vio:var(--myst);--bad:var(--short);--warn:var(--warnC);}}
+ --pillbg:#0d211761;--track:#10281c;--logbg:#08150e;--shadow:0 0 0 1px rgba(46,198,149,.05),0 14px 34px -22px rgba(0,0,0,.9);--good:var(--long);--blue:var(--current);--vio:var(--myst);--bad:var(--short);--warn:var(--warnC);}}
 *{box-sizing:border-box}
 body{margin:0;padding:12px 10px 28px;color:var(--ink);font:14px/1.5 -apple-system,system-ui,"Segoe UI",Roboto,sans-serif;
  background:var(--bg);
@@ -162,6 +162,14 @@ body{padding:0 0 30px}
 .ipStat{margin-top:7px}
 .ipWhatIfWrap{margin-top:9px;padding-top:8px;border-top:1px solid var(--line)}
 .ipSlider{width:100%;accent-color:var(--sea)}
+
+#runwaySub{margin-top:2px}
+.ignRow{display:grid;grid-template-columns:64px 1fr auto;gap:8px;align-items:baseline;font-size:11.5px;padding:1.5px 0;font-variant-numeric:tabular-nums}
+.ignK{color:var(--dim);font-size:10px;letter-spacing:.8px;text-transform:uppercase}
+.ignV{font-weight:600}
+.ignAgo{color:var(--dim);font-size:10px}
+.ignOrg .ignV{color:var(--gold)}
+.ignOrg{border-top:1px dashed var(--line);padding-top:3px;margin-top:1px}
 </style>
 </head>
 <body>
@@ -567,26 +575,26 @@ function rebuildSeries(){
 /* exact mirror of labels.py zigzag (R=350) incl. startup rule */
 function zigzagState(c){
   const n=c.length, R=350;
-  let d=0, extreme=c[0], start=0, spx=c[0], extIdx=0;
+  let d=0, extreme=c[0], start=0, spx=c[0], extIdx=0, pivotIdx=0;
   let ext=0, age=0, retr=0;
   for(let i=1;i<n;i++){
     if(d===0){
-      if(c[i]-spx>=R){ d=1; extreme=c[i]; start=0; spx=c[0]; extIdx=i; }
-      else if(spx-c[i]>=R){ d=-1; extreme=c[i]; start=0; spx=c[0]; extIdx=i; }
+      if(c[i]-spx>=R){ d=1; extreme=c[i]; start=0; spx=c[0]; extIdx=i; pivotIdx=0; }
+      else if(spx-c[i]>=R){ d=-1; extreme=c[i]; start=0; spx=c[0]; extIdx=i; pivotIdx=0; }
       continue;
     }
     if(d===1){
       if(c[i]>extreme){ extreme=c[i]; extIdx=i; }
-      if(extreme-c[i]>=R){ d=-1; spx=extreme; start=i; extreme=c[i]; extIdx=i; }
+      if(extreme-c[i]>=R){ d=-1; pivotIdx=extIdx; spx=extreme; start=i; extreme=c[i]; extIdx=i; }
     } else {
       if(c[i]<extreme){ extreme=c[i]; extIdx=i; }
-      if(c[i]-extreme>=R){ d=1; spx=extreme; start=i; extreme=c[i]; extIdx=i; }
+      if(c[i]-extreme>=R){ d=1; pivotIdx=extIdx; spx=extreme; start=i; extreme=c[i]; extIdx=i; }
     }
     ext = d===1? (extreme-spx) : (spx-extreme);
     age = i-start;
     retr = d===1? (extreme-c[i]) : (c[i]-extreme);
   }
-  return {dir:d, ext, age, retr, startIdx:start, extreme, startPx:spx, extIdx};
+  return {dir:d, ext, age, retr, startIdx:start, extreme, startPx:spx, extIdx, pivotIdx};
 }
 
 function computeFeatureMap(){
@@ -973,7 +981,19 @@ function render(){
     if(L.dir!==0){
       const dirTxt=L.dir===1?"LONG":"SHORT";
       set("runwayMain",dirTxt+" RUNWAY LIVE"); cls("runwayMain","big "+(L.dir===1?"good":"bad"));
-      {const _si=(L.startIdx!=null&&L.startIdx>=0)?L.startIdx:null;const _t0=(_si!=null&&CORE.t&&CORE.t[_si]!=null)?CORE.t[_si]:null;const _mins=_t0!=null?Math.max(0,Math.round((now()-_t0)/60000)):Math.round(L.age);const _hm=_t0!=null?new Date(_t0).toLocaleTimeString("en-GB",{hour12:false,hour:"2-digit",minute:"2-digit"}):"—";const _org=(L.startPx!=null)?L.startPx:null;const _cfm=(L.startIdx!=null&&CORE.c&&CORE.c[L.startIdx]!=null)?CORE.c[L.startIdx]:null;const _op=_org!=null?fmtPrice(_org/TICK_MULT):"—";const _cp=_cfm!=null?fmtPrice(_cfm/TICK_MULT):null;set("runwaySub","Ignited "+_hm+" · "+_mins+"m ago · Origin "+_op+(_cp&&_cp!==_op?" · confirmed @ "+_cp:""));}
+      {const _si=(L.startIdx!=null&&L.startIdx>=0)?L.startIdx:null;
+      const _tc=(_si!=null&&CORE.t&&CORE.t[_si]!=null)?CORE.t[_si]:null;
+      const _pi=(L.pivotIdx!=null&&L.pivotIdx>=0)?L.pivotIdx:null;
+      const _to=(_pi!=null&&CORE.t&&CORE.t[_pi]!=null)?CORE.t[_pi]:null;
+      const _mins=_tc!=null?Math.max(0,Math.round((now()-_tc)/60000)):Math.round(L.age);
+      const _hmc=_tc!=null?fmtHM(_tc):"—";
+      const _hmo=_to!=null?fmtHM(_to):"—";
+      const _cfm=(_si!=null&&CORE.c&&CORE.c[_si]!=null)?CORE.c[_si]:null;
+      const _cp=_cfm!=null?fmtPrice(_cfm/TICK_MULT):"—";
+      const _op=(L.startPx!=null)?fmtPrice(L.startPx/TICK_MULT):"—";
+      const _e=q("runwaySub");
+      if(_e)_e.innerHTML='<div class="ignRow"><span class="ignK">Confirmed</span><span class="ignV">'+_hmc+' @ '+_cp+'</span><span class="ignAgo">'+_mins+'m ago</span></div>'+
+        '<div class="ignRow ignOrg"><span class="ignK">Origin</span><span class="ignV">'+_hmo+' @ '+_op+'</span><span class="ignAgo">true start</span></div>';}
       set("rwExt","+"+Math.round(L.ext)+"t");
       set("rwPeak",(L.extreme!=null)?("pk "+fmtPrice(L.extreme/TICK_MULT)+(L.dir===1?" \u25b2":L.dir===-1?" \u25bc":"")+((L.extIdx!=null&&CORE.t&&CORE.t[L.extIdx]!=null)?" @ "+fmtHM(CORE.t[L.extIdx]):"")):""); set("rwAge",Math.round(L.age)+"m");
       set("rwRetr","−"+Math.round(L.retr)+"t"); set("rwPace",(L.age>0?(L.ext/L.age).toFixed(0):"—")+" t/m");

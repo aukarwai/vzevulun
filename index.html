@@ -174,8 +174,8 @@ body{padding:0 0 30px}
 
 .lab{border:1px dashed var(--myst);background:linear-gradient(180deg,color-mix(in oklab,var(--myst) 8%,var(--panel)),var(--panel2))}
 .lab .cardTitle .he{color:var(--myst)}
-.modeRow{display:flex;gap:5px;margin-bottom:7px}
-.modeBtn{flex:1;padding:6px 4px;font-size:10px;font-weight:700;letter-spacing:.5px;border-radius:8px;
+.modeRow{display:flex;gap:4px;margin-bottom:7px;flex-wrap:nowrap}
+.modeBtn{flex:1 1 0;min-width:0;padding:6px 2px;font-size:9px;font-weight:700;letter-spacing:.2px;border-radius:8px;white-space:nowrap;
   background:var(--pillbg);border:1px solid var(--edgeS);color:var(--dim)}
 .modeBtn.on{background:var(--myst);border-color:var(--myst);color:var(--foam)}
 .nulVerdict{font-size:11.5px;font-weight:700;padding:5px 8px;border-radius:8px}
@@ -185,6 +185,7 @@ body{padding:0 0 30px}
 .sMirror{background:color-mix(in oklab,var(--myst) 15%,transparent);color:var(--myst);border-color:color-mix(in oklab,var(--myst) 42%,transparent)}
 .sSel{background:color-mix(in oklab,var(--current) 14%,transparent);color:var(--current);border-color:color-mix(in oklab,var(--current) 40%,transparent)}
 .sCon{background:color-mix(in oklab,var(--warnC) 15%,transparent);color:var(--warnC);border-color:color-mix(in oklab,var(--warnC) 42%,transparent)}
+.sZev{background:color-mix(in oklab,var(--long) 14%,transparent);color:var(--long);border-color:color-mix(in oklab,var(--long) 40%,transparent)}
 .sFlat{background:var(--pillbg);color:var(--dim);border-color:var(--edgeS)}
 </style>
 </head>
@@ -218,6 +219,7 @@ body{padding:0 0 30px}
       <section class="card lab">
         <div class="cardTitle"><span class="he">מַעְבָּדָה</span>Inversion Laboratory · research control</div>
         <div class="modeRow">
+          <button class="modeBtn" data-m="ZEVULUN" onclick="nulSetMode('ZEVULUN')">ZEVULUN</button>
           <button class="modeBtn" data-m="MIRROR" onclick="nulSetMode('MIRROR')">MIRROR</button>
           <button class="modeBtn" data-m="SELECTIVE" onclick="nulSetMode('SELECTIVE')">SELECTIVE</button>
           <button class="modeBtn" data-m="CONTRARIAN" onclick="nulSetMode('CONTRARIAN')">CONTRARIAN</button>
@@ -1438,8 +1440,8 @@ function rrRender(){
                          measured −0.057 lag-1/2 return autocorrelation (real mean-reversion).
                          Keeps IP + RR upright; direction = fade the last move.  */
 const NUL={
-  mode:(localStorage.getItem("NULUVEZ_MODE")||"MIRROR"),
-  score:{MIRROR:{h:0,n:0},SELECTIVE:{h:0,n:0},CONTRARIAN:{h:0,n:0}},
+  mode:(localStorage.getItem("NULUVEZ_MODE")||"ZEVULUN"),
+  score:{ZEVULUN:{h:0,n:0},MIRROR:{h:0,n:0},SELECTIVE:{h:0,n:0},CONTRARIAN:{h:0,n:0}},
   armed:null, lastIdx:0
 };
 function nulSetMode(m){NUL.mode=m;try{localStorage.setItem("NULUVEZ_MODE",m)}catch(e){}
@@ -1456,6 +1458,7 @@ function nulContrarianBias(){
 function nulTransform(sc){
   if(!sc||!sc.bias)return sc;
   const m=NUL.mode;
+  if(m==="ZEVULUN")return sc;   // baseline: untouched original
   const flip=s=>s==="LONG"?"SHORT":"LONG";
   if(m==="MIRROR"||m==="SELECTIVE"){
     sc.bias=flip(sc.bias);
@@ -1490,7 +1493,10 @@ function nulStance(){
   const runway=L.dir===1?"LONG":"SHORT";
   const opp=runway==="LONG"?"SHORT":"LONG";
   const m=NUL.mode; let txt,cl;
-  if(m==="MIRROR"){
+  if(m==="ZEVULUN"){
+    txt="⚓ ZEVULUN · runway is "+runway+" → RIDE IT · stance "+runway+" (original engine, baseline)";
+    cl="nulStance sZev";
+  } else if(m==="MIRROR"){
     txt="🪞 MIRROR · runway is "+runway+" → FADE IT · stance "+opp+" (control: expect this to lose)";
     cl="nulStance sMirror";
   } else if(m==="SELECTIVE"){
@@ -1508,14 +1514,21 @@ function nulRender(){
   const S=NUL.score[NUL.mode], rate=S.n?Math.round(100*S.h/S.n):0;
   set("nulMode",NUL.mode);
   set("nulRate",S.n? rate+"% ("+S.h+"/"+S.n+")":"gathering…");
-  const note={MIRROR:"Control: inverts EVERYTHING. If Zevulun is real, this should score BELOW 50% and its IP/RR should be anti-predictive.",
+  const note={ZEVULUN:"Baseline — the original Zevulun engine, untouched. Ignition Pressure and Reversal Risk upright. This is the control group all inverted modes are measured against.",
+              MIRROR:"Control: inverts EVERYTHING. If Zevulun is real, this should score BELOW 50% and its IP/RR should be anti-predictive.",
               SELECTIVE:"Inverts direction only (a proven coin-flip, so ~50% expected). IP + Reversal Risk left upright and honest.",
               CONTRARIAN:"Fades the last 2-min move — the only inversion the data supports (−0.057 autocorrelation). IP + RR upright."}[NUL.mode];
   set("nulNote",note);
   const vd=q("nulVerdict");
   if(vd){
     let t,cl;
+    const isBase=(NUL.mode==="ZEVULUN");
     if(!S.n||S.n<5){t="○ INSUFFICIENT DATA · need ≥5 resolved calls";cl="nulVerdict vhold";}
+    else if(isBase){
+      if(rate>=55){t="✓ BASELINE HOLDING ("+rate+"%, n="+S.n+") · original engine performing";cl="nulVerdict vstay";}
+      else if(rate<=45){t="⚠ BASELINE UNDER 50% ("+rate+"%, n="+S.n+") · direction is a coin flip — expected";cl="nulVerdict vwarn";}
+      else {t="≈ BASELINE ~COIN FLIP ("+rate+"%, n="+S.n+") · matches our honest thesis on direction";cl="nulVerdict vhold";}
+    }
     else if(rate>=55){t="⚠ OUTPERFORMING (n="+S.n+") · investigate — this challenges our thesis";cl="nulVerdict vwarn";}
     else if(rate<=45){t="✓ FAILING AS PREDICTED (n="+S.n+") · confirms Zevulun's edge is real";cl="nulVerdict vstay";}
     else {t="≈ COIN FLIP (n="+S.n+") · as expected for an inverted noise signal";cl="nulVerdict vhold";}

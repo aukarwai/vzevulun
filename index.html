@@ -6,7 +6,7 @@
 <meta name="color-scheme" content="light dark"/>
 <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f3efe3"/>
 <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#06110c"/>
-<title>NULUVEZ · INVERSION LAB</title>
+<title>ZEVULUN VELOCITY · זבולון</title>
 <style>
 :root{color-scheme:light dark;
  --bg:#f3efe3;--panel:#fbf8ee;--panel2:#efe9d6;--ink:#152a20;--dim:#5f7267;--line:#d9d2ba;--edgeS:#cfc7ab;
@@ -171,28 +171,12 @@ body{padding:0 0 30px}
 .ignAgo{color:var(--dim);font-size:10px}
 .ignOrg .ignV{color:var(--gold)}
 .ignOrg{border-top:1px dashed var(--line);padding-top:3px;margin-top:1px}
-
-.lab{border:1px dashed var(--myst);background:linear-gradient(180deg,color-mix(in oklab,var(--myst) 8%,var(--panel)),var(--panel2))}
-.lab .cardTitle .he{color:var(--myst)}
-.modeRow{display:flex;gap:4px;margin-bottom:7px;flex-wrap:nowrap}
-.modeBtn{flex:1 1 0;min-width:0;padding:6px 2px;font-size:9px;font-weight:700;letter-spacing:.2px;border-radius:8px;white-space:nowrap;
-  background:var(--pillbg);border:1px solid var(--edgeS);color:var(--dim)}
-.modeBtn.on{background:var(--myst);border-color:var(--myst);color:var(--foam)}
-.nulVerdict{font-size:11.5px;font-weight:700;padding:5px 8px;border-radius:8px}
-
-.nulStance{font-size:11px;font-weight:700;padding:5px 8px;border-radius:8px;line-height:1.35;letter-spacing:.2px;
-  background:var(--pillbg);border:1px solid var(--edgeS);color:var(--dim)}
-.sMirror{background:color-mix(in oklab,var(--myst) 15%,transparent);color:var(--myst);border-color:color-mix(in oklab,var(--myst) 42%,transparent)}
-.sSel{background:color-mix(in oklab,var(--current) 14%,transparent);color:var(--current);border-color:color-mix(in oklab,var(--current) 40%,transparent)}
-.sCon{background:color-mix(in oklab,var(--warnC) 15%,transparent);color:var(--warnC);border-color:color-mix(in oklab,var(--warnC) 42%,transparent)}
-.sZev{background:color-mix(in oklab,var(--long) 14%,transparent);color:var(--long);border-color:color-mix(in oklab,var(--long) 40%,transparent)}
-.sFlat{background:var(--pillbg);color:var(--dim);border-color:var(--edgeS)}
 </style>
 </head>
 <body>
 <header class="helm">
   <div class="helmIn">
-    <div class="helmBrand"><span class="paleo">𐤆𐤁𐤅𐤋𐤍</span><span class="he">ןולובז</span>NULUVEZ<span class="helmTag">· INVERSION LABORATORY · MIRROR OF ZEVULUN</span></div>
+    <div class="helmBrand"><span class="paleo">𐤆𐤁𐤅𐤋𐤍</span><span class="he">זְבוּלוּן</span>ZEVULUN VELOCITY<span class="helmTag">· MERCHANT OF THE WAVES · 1000PEPE-USDT PERP</span></div>
 
     <div class="statusRow">
       <span id="feedBadge" class="pill warn">BOOT</span>
@@ -216,20 +200,6 @@ body{padding:0 0 30px}
   <div class="tript">
     <div class="zone zonePresent">
       <div class="realm"><span class="he">הַהֹוֶה</span><span class="en">The Deck · present decision surface</span></div>
-      <section class="card lab">
-        <div class="cardTitle"><span class="he">מַעְבָּדָה</span>Inversion Laboratory · research control</div>
-        <div class="modeRow">
-          <button class="modeBtn" data-m="ZEVULUN" onclick="nulSetMode('ZEVULUN')">ZEVULUN</button>
-          <button class="modeBtn" data-m="MIRROR" onclick="nulSetMode('MIRROR')">MIRROR</button>
-          <button class="modeBtn" data-m="SELECTIVE" onclick="nulSetMode('SELECTIVE')">SELECTIVE</button>
-          <button class="modeBtn" data-m="CONTRARIAN" onclick="nulSetMode('CONTRARIAN')">CONTRARIAN</button>
-        </div>
-        <div class="kv"><span>Active mode</span><b id="nulMode">MIRROR</b></div>
-        <div class="kv"><span>Live win-rate · this mode</span><b id="nulRate">gathering…</b></div>
-        <div class="nulVerdict" id="nulVerdict" style="margin-top:6px">—</div>
-        <div class="small" id="nulNote" style="margin-top:5px;font-size:10px;line-height:1.45">—</div>
-        <div class="small" style="margin-top:6px;font-size:9.5px;opacity:.6;line-height:1.4">⚠ This is a falsification instrument, not a trading edge. Inverting a coin-flip yields a coin-flip; inverting a <i>working</i> signal yields a reliably <i>bad</i> one. Watch it fail — that failure is the proof.</div>
-      </section>
       <section class="card blade">
     <div class="cardTitle"><span class="he">כִּוּוּן</span>Present · Direction Field</div>
     <div class="bladeEdge" aria-hidden="true"></div>
@@ -251,7 +221,6 @@ body{padding:0 0 30px}
       <section class="card">
     <div class="cardTitle"><span class="he">הַמַּסָּע</span>The Voyage · live runway</div>
     <div class="big" id="runwayMain">NO ACTIVE RUNWAY</div>
-    <div class="nulStance" id="nulStance" style="margin:4px 0 2px">—</div>
     <div class="small" id="runwaySub">Waiting for a ±350t ignition.</div>
     <div class="grid2">
       <div class="kv"><span>Extracted</span><b id="rwExt">—</b></div>
@@ -988,8 +957,7 @@ function render(){
   set("p32IntegrityViolations",String((P32.continuity&&P32.continuity.integrityViolations||[]).length));
 
   rebuildSeries();
-  const sc=scanField();
-    nulTransform(sc); nulScore(sc); P33.field=sc;
+  const sc=scanField(); P33.field=sc;
   if(!sc){
     set("engineBadge","WARMUP "+CORE.c.length+"/246"); cls("engineBadge","pill warn");
     set("biasMain","CALIBRATING…"); p32SetWarmupGate("BUILDING "+CORE.c.length+"/246","warn");
@@ -1004,7 +972,7 @@ function render(){
     set("pl350","L350 "+fmtP(sc.pL350)); cls("pl350","pill "+(sc.pL350>=M.gates.watch?"good":"blue"));
     set("ps350","S350 "+fmtP(sc.pS350)); cls("ps350","pill "+(sc.pS350>=M.gates.watch?"bad":"blue"));
     set("alignPill","ALIGN "+sc.f.align); set("entropyPill","ENTROPY "+sc.f.sent39.toFixed(2));
-    ipUpdate(); ipRender(); rrRender(); nulRender();
+    ipUpdate(); ipRender(); rrRender();
     zvRender(sc);
     q("ladder350").innerHTML=ladderHTML((side==="LONG"?sc.long:sc.short)[350],350);
     q("ladder150").innerHTML=ladderHTML((side==="LONG"?sc.long:sc.short)[150],150);
@@ -1126,7 +1094,6 @@ function saveP32History(){
 function loadP32History(){
   try{P32.history=JSON.parse(localStorage.getItem("P32_RUNWAY_HISTORY")||"[]")}catch(e){P32.history=[]}
 }
-window.nulSetMode=nulSetMode;
 window.exportRunwayHistory=exportRunwayHistory;window.clearRunwayHistory=clearRunwayHistory;
 
 /* ==== P33 IRON BLOODSTREAM · diagnostics + failover (own layer; lifted feed untouched) ==== */
@@ -1353,7 +1320,6 @@ function ipState(){
 }
 function ipRender(){
   const st=ipState(); if(!q("ipLabel"))return;
-  st.p=nulInvertIP(st.p);
   set("ipLabel",st.lab); cls("ipLabel","pill "+st.cls);
   set("ipPct",st.p+"%"); set("ipNote",st.note);
   const f=q("ipFill"); if(f){f.style.width=Math.max(2,st.p)+"%";
@@ -1413,7 +1379,6 @@ function reversalRisk(){
 function rrRender(){
   const el=q("rrLabel"); if(!el)return;
   const r=reversalRisk();
-  if(r) r.p=nulInvertRR(r.p);
   if(!r){set("rrLabel","NO RUNWAY");cls("rrLabel","pill");set("rrPct","—");set("rrBarNote","awaiting active runway");
     const v=q("rrVerdict");if(v){v.textContent="—";v.className="rrVerdict";}
     const f=q("rrFill");if(f)f.style.width="2%";return;}
@@ -1430,112 +1395,6 @@ function rrRender(){
     f.style.background=r.p>=0.20?"var(--short)":r.p>=0.08?"var(--warnC)":r.p>=0.03?"var(--current)":"var(--long)";}
 }
 
-/* ==== NULUVEZ · INVERSION LABORATORY (research instrument, not a trading edge claim) ====
-   MODE A "MIRROR"     — invert EVERYTHING (direction + Ignition Pressure + Reversal Risk).
-                         Scientific control: if the originals are real, this must FAIL.
-                         Expected: IP AUC ~0.28 (mirror of 0.72), RR ~0.15 (mirror of 0.85).
-   MODE B "SELECTIVE"  — invert ONLY direction (which is a proven coin flip, so harmless),
-                         keep IP + RR upright (they genuinely predict).
-   MODE C "CONTRARIAN" — the ONLY data-supported inversion: fade short-term moves, built on the
-                         measured −0.057 lag-1/2 return autocorrelation (real mean-reversion).
-                         Keeps IP + RR upright; direction = fade the last move.  */
-const NUL={
-  mode:(localStorage.getItem("NULUVEZ_MODE")||"ZEVULUN"),
-  score:{ZEVULUN:{h:0,n:0},MIRROR:{h:0,n:0},SELECTIVE:{h:0,n:0},CONTRARIAN:{h:0,n:0}},
-  armed:null, lastIdx:0
-};
-function nulSetMode(m){NUL.mode=m;try{localStorage.setItem("NULUVEZ_MODE",m)}catch(e){}
-  document.querySelectorAll(".modeBtn").forEach(b=>b.classList.toggle("on",b.dataset.m===m));
-  p29Log("NULUVEZ mode → "+m); render();}
-// contrarian direction: fade the recent move (mean-reversion, the only measured inversion)
-function nulContrarianBias(){
-  const c=CORE.c,n=c.length; if(n<3)return null;
-  const r1=c[n-1]-c[n-2], r2=c[n-2]-c[n-3];
-  const recent=r1+r2;                     // last 2-min move
-  return recent>0? "SHORT" : recent<0? "LONG" : null;   // fade it
-}
-// transform the engine's read according to mode
-function nulTransform(sc){
-  if(!sc||!sc.bias)return sc;
-  const m=NUL.mode;
-  if(m==="ZEVULUN")return sc;   // baseline: untouched original
-  const flip=s=>s==="LONG"?"SHORT":"LONG";
-  if(m==="MIRROR"||m==="SELECTIVE"){
-    sc.bias=flip(sc.bias);
-    const t=sc.long; sc.long=sc.short; sc.short=t;   // swap the ladders too
-  } else if(m==="CONTRARIAN"){
-    const cb=nulContrarianBias();
-    if(cb && cb!==sc.bias){ sc.bias=cb; const t=sc.long; sc.long=sc.short; sc.short=t; }
-  }
-  return sc;
-}
-// MIRROR also inverts the predictive modules (this is the falsification test)
-function nulInvertIP(p){ return NUL.mode==="MIRROR"? (100-p) : p; }
-function nulInvertRR(pr){ return NUL.mode==="MIRROR"? Math.max(0,0.30-pr) : pr; }
-// live A/B scorecard: did the chosen bias actually win over the next 20 bars?
-function nulScore(sc){
-  const c=CORE.c,idx=c.length-1; if(idx===NUL.lastIdx||!sc||!sc.bias)return; NUL.lastIdx=idx;
-  if(NUL.armed){
-    const A=NUL.armed, moved=(c[idx]-A.px), waited=idx-A.i;
-    if(Math.abs(moved)>=350){
-      const won=(A.bias==="LONG"&&moved>0)||(A.bias==="SHORT"&&moved<0);
-      const S=NUL.score[A.mode]; S.n++; if(won)S.h++;
-      NUL.armed=null;
-    } else if(waited>=20){ NUL.armed=null; }
-  }
-  if(!NUL.armed && sc.biasStrong){ NUL.armed={mode:NUL.mode,bias:sc.bias,px:c[idx],i:idx}; }
-}
-/* Nuluvez stance: the runway direction is a MEASURED FACT and is never falsified.
-   What flips per mode is the STANCE — what this inverted engine would do about it. */
-function nulStance(){
-  const L=CORE.leg, el=q("nulStance"); if(!el)return;
-  if(!L||L.dir===0){el.textContent="—";el.className="nulStance";return;}
-  const runway=L.dir===1?"LONG":"SHORT";
-  const opp=runway==="LONG"?"SHORT":"LONG";
-  const m=NUL.mode; let txt,cl;
-  if(m==="ZEVULUN"){
-    txt="⚓ ZEVULUN · runway is "+runway+" → RIDE IT · stance "+runway+" (original engine, baseline)";
-    cl="nulStance sZev";
-  } else if(m==="MIRROR"){
-    txt="🪞 MIRROR · runway is "+runway+" → FADE IT · stance "+opp+" (control: expect this to lose)";
-    cl="nulStance sMirror";
-  } else if(m==="SELECTIVE"){
-    txt="⚖️ SELECTIVE · runway is "+runway+" → FADE IT · stance "+opp+" (direction is a coin flip either way)";
-    cl="nulStance sSel";
-  } else {
-    const cb=nulContrarianBias();
-    if(cb && cb!==runway){ txt="🔄 CONTRARIAN · runway is "+runway+", last move fading → stance "+cb+" (mean-reversion)"; cl="nulStance sCon"; }
-    else { txt="🔄 CONTRARIAN · runway is "+runway+", no fade signal → stance FLAT (stand aside)"; cl="nulStance sFlat"; }
-  }
-  el.textContent=txt; el.className=cl;
-}
-function nulRender(){
-  nulStance();
-  const S=NUL.score[NUL.mode], rate=S.n?Math.round(100*S.h/S.n):0;
-  set("nulMode",NUL.mode);
-  set("nulRate",S.n? rate+"% ("+S.h+"/"+S.n+")":"gathering…");
-  const note={ZEVULUN:"Baseline — the original Zevulun engine, untouched. Ignition Pressure and Reversal Risk upright. This is the control group all inverted modes are measured against.",
-              MIRROR:"Control: inverts EVERYTHING. If Zevulun is real, this should score BELOW 50% and its IP/RR should be anti-predictive.",
-              SELECTIVE:"Inverts direction only (a proven coin-flip, so ~50% expected). IP + Reversal Risk left upright and honest.",
-              CONTRARIAN:"Fades the last 2-min move — the only inversion the data supports (−0.057 autocorrelation). IP + RR upright."}[NUL.mode];
-  set("nulNote",note);
-  const vd=q("nulVerdict");
-  if(vd){
-    let t,cl;
-    const isBase=(NUL.mode==="ZEVULUN");
-    if(!S.n||S.n<5){t="○ INSUFFICIENT DATA · need ≥5 resolved calls";cl="nulVerdict vhold";}
-    else if(isBase){
-      if(rate>=55){t="✓ BASELINE HOLDING ("+rate+"%, n="+S.n+") · original engine performing";cl="nulVerdict vstay";}
-      else if(rate<=45){t="⚠ BASELINE UNDER 50% ("+rate+"%, n="+S.n+") · direction is a coin flip — expected";cl="nulVerdict vwarn";}
-      else {t="≈ BASELINE ~COIN FLIP ("+rate+"%, n="+S.n+") · matches our honest thesis on direction";cl="nulVerdict vhold";}
-    }
-    else if(rate>=55){t="⚠ OUTPERFORMING (n="+S.n+") · investigate — this challenges our thesis";cl="nulVerdict vwarn";}
-    else if(rate<=45){t="✓ FAILING AS PREDICTED (n="+S.n+") · confirms Zevulun's edge is real";cl="nulVerdict vstay";}
-    else {t="≈ COIN FLIP (n="+S.n+") · as expected for an inverted noise signal";cl="nulVerdict vhold";}
-    vd.textContent=t; vd.className=cl;
-  }
-}
-
 async function start(){
   loadPapillonCandles(); loadP32Evidence(); loadP32History(); wireP32ExportButtons(); wireP32ImportInput();
   set("modelMeta",M?("Model: GBM×"+M.trees.length+" · OOS-2026 AUC "+M.meta.oos_auc+" · flagship 350/350 elite: hit "+fmtP(M.meta.flagship.hit)+" @ th "+fmtP(M.meta.flagship.th)+" · "+M.meta.flagship.perday+"/day · exp +"+M.meta.flagship.expT+"t"):"MODEL MISSING");
@@ -1546,7 +1405,6 @@ async function start(){
   await p33OpenPrimary();
   zvConnectFlow();
   render();
-  nulSetMode(NUL.mode);
   setInterval(render,1000);
   setInterval(restResync,60*1000);
   setInterval(()=>{

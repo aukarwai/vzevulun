@@ -89,6 +89,11 @@ body{margin:0;padding:12px 10px 28px;color:var(--ink);font:14px/1.5 -apple-syste
 .past{font-size:11.5px;border-top:1px dashed var(--line);padding:5px 0;font-variant-numeric:tabular-nums}
 #curRunway{border:1px solid var(--edgeS);border-radius:10px;padding:6px 8px;margin-bottom:7px;background:var(--pillbg)}
 #dailySummary{margin-top:6px;color:var(--current)}
+.zevulunRunwayLedger.collapsed{padding-block:12px}
+.zevulunRunwayLedger.collapsed .drawerHead{min-height:20px;align-items:center}
+.zevulunRunwayLedger.collapsed .drawerHead .cardTitle{margin:0;line-height:20px}
+.journalTools{margin-top:8px}
+.journalArchiveNote{margin-top:7px;font-size:10px;color:var(--dim);line-height:1.45}
 /* drawers */
 .card.collapsed>*:not(.drawerHead){display:none}
 .drawerHead{cursor:pointer;user-select:none;display:flex;justify-content:space-between;align-items:center}
@@ -279,7 +284,7 @@ body{padding:0 0 30px}
     </div>
     <div class="zone zonePast">
       <div class="realm"><span class="he">הֶעָבָר</span><span class="en">The Wake · voyages completed</span></div>
-      <section class="card collapsed">
+      <section class="card collapsed zevulunRunwayLedger">
     <div class="drawerHead" onclick="this.parentElement.classList.toggle('collapsed')">
       <div class="cardTitle" style="margin-bottom:0"><span class="he">סֵפֶר הַמַּסָּעוֹת</span>Ledger of Voyages · completed runways</div>
       <span class="chev">▼</span>
@@ -336,13 +341,18 @@ body{padding:0 0 30px}
   </section>
     <div class="holdWide"><section class="card collapsed">
     <div class="drawerHead" onclick="this.parentElement.classList.toggle('collapsed')">
-      <div class="cardTitle" style="margin-bottom:0"><span class="he">יוֹמָן</span>Journal · ignition log &amp; field log</div>
+      <div class="cardTitle" style="margin-bottom:0"><span class="he">יוֹמָן</span>Journal · candle wake, completed runways &amp; field log</div>
       <span class="chev">▼</span>
     </div>
     <div class="cardTitle" style="margin-top:8px">Engine ignition log</div>
     <div class="log" id="p32Ledger"></div>
     <div class="cardTitle" style="margin-top:8px">Field log</div>
     <div class="log" id="reasonLog"></div>
+    <div class="btnrow journalTools">
+      <button onclick="exportZevulunJournal('json')">📥 Export JSON</button>
+      <button onclick="exportZevulunJournal('txt')">📄 Export TXT</button>
+    </div>
+    <div class="journalArchiveNote">Exports Zevulun’s persistent closed-candle wake, the live partial minute at the export click, and every deduplicated completed runway retained in the voyage archive.</div>
   </section></div>
   </div>
 
@@ -392,6 +402,17 @@ const P29={price:null,prevPrice:null,lastTickAt:0,ws:null,candles:[],depth:null,
 
 const P32={active:null,ledger:[],lastState:"AWAITING PAPER ZONE",cooldownUntil:0,lastArmAt:0,continuity:{importedCandleAnchor:0,importedAt:null,importedFile:"",resumeStatus:"No import yet",archives:[],history:[],integrityViolations:[],legacyQuarantine:[]}};
 
+const ZEVULUN_JOURNAL_DB="ZEVULUN_VELOCITY_JOURNAL_ARCHIVE_V1";
+const ZEVULUN_CANDLE_ARCHIVE_STORE="candle_wake";
+const ZEVULUN_RUNWAY_ARCHIVE_STORE="completed_voyages";
+const ZEVULUN_RUNWAY_MEMORY_KEY="ZEVULUN_VELOCITY_RUNWAY_HISTORY_V2";
+const ZEVULUN_LEGACY_RUNWAY_MEMORY_KEYS=["P32_RUNWAY_HISTORY"];
+const ZEVULUN_RUNWAY_MEMORY_LIMIT=2000;
+const ZEVULUN_ARCHIVE={
+  openPromise:null,available:typeof indexedDB!=="undefined",lastError:"",notified:"",
+  lastCandleBatch:"",runwayBackfillComplete:false,runwayBackfillCutoff:0,sessionStartedAt:Date.now()
+};
+
 /* ==== PAPILLON P32.3 LIFTED · STATUS/LOG/CANDLE-CONTINUITY/FEED ==== */
 function q(id){return document.getElementById(id)}
 function set(id,v){const e=q(id); if(e)e.textContent=v}
@@ -400,13 +421,214 @@ function pct(n){return Math.max(0,Math.min(100,Math.round(n||0)))}
 function now(){return Date.now()}
 function fmtPrice(p){return p?Number(p).toFixed(7):"—"}
 function p29Log(msg){const e=q("reasonLog"); if(!e)return; const t=new Date().toLocaleTimeString("en-GB",{hour12:false}); e.textContent=`[${t}] ${msg}\n`+e.textContent.slice(0,5000)}
-function savePapillonCandles(){try{localStorage.setItem(STORE_CANDLES,JSON.stringify(P29.candles.slice(-MAX_CANDLES)))}catch(e){}}
-function loadPapillonCandles(){try{const arr=JSON.parse(localStorage.getItem(STORE_CANDLES)||"[]"); if(Array.isArray(arr)){P29.candles=arr.filter(c=>c&&c.t&&c.c).slice(-MAX_CANDLES); p29Log("Restored "+P29.candles.length+" Papillon candles from memory")}}catch(e){}}
-async function bootstrapPapillonCandles(){let loaded=false; for(const url of PAPILLON_REST_KLINES){try{const r=await fetch(url,{cache:"no-store"}); const j=await r.json(); const data=Array.isArray(j)?j:(Array.isArray(j.data)?j.data:[]); if(data.length){const seed=data.map(k=>Array.isArray(k)?{t:+k[0]||+k[6]||Date.now(),o:+k[1],h:+k[2],l:+k[3],c:+k[4],v:+k[5]||0}:{t:+(k.time||k.openTime||k.T||k.t||Date.now()),o:+(k.open||k.o),h:+(k.high||k.h),l:+(k.low||k.l),c:+(k.close||k.c),v:+(k.volume||k.v||0)}).filter(c=>c.c>0&&c.h>0&&c.l>0);
-        const mm=new Map(); for(const c of (P29.candles||[])) mm.set(Math.round(c.t/60000),c); for(const c of seed) mm.set(Math.round(c.t/60000),c);
-        P29.candles=Array.from(mm.values()).sort((a,b)=>a.t-b.t).slice(-MAX_CANDLES); if(P29.candles.length){P29.price=P29.candles[P29.candles.length-1].c;P29.lastTickAt=now();savePapillonCandles();loaded=true;p29Log("Bootstrapped "+P29.candles.length+" Papillon candles from REST ("+url.split("/")[2]+")");break}}}catch(e){}} if(!loaded)p29Log("REST bootstrap unavailable; Papillon candles will build from live pulse")}
-function minuteBucket(ts){return Math.floor(ts/60000)*60000}
-function updatePapillonCandle(price,ts){if(!price||price<=0)return; const t=minuteBucket(ts||now()); let last=P29.candles[P29.candles.length-1]; if(last&&last.t===t){last.h=Math.max(+last.h,price);last.l=Math.min(+last.l,price);last.c=price;last.v=(+last.v||0)+1;P29.candles[P29.candles.length-1]=last}else{const prev=last?+last.c:price;P29.candles.push({t,o:prev,h:Math.max(prev,price),l:Math.min(prev,price),c:price,v:1})} if(P29.candles.length>MAX_CANDLES)P29.candles=P29.candles.slice(-MAX_CANDLES); savePapillonCandles()}
+function zevulunArchiveFailure(err){
+  const msg=err&&err.message?err.message:String(err||"unknown archive error");
+  ZEVULUN_ARCHIVE.lastError=msg;
+  if(ZEVULUN_ARCHIVE.notified!==msg){
+    ZEVULUN_ARCHIVE.notified=msg;
+    p29Log("Zevulun persistent archive unavailable · rolling-window export fallback");
+  }
+}
+function openZevulunArchive(){
+  if(!ZEVULUN_ARCHIVE.available)return Promise.resolve(null);
+  if(ZEVULUN_ARCHIVE.openPromise)return ZEVULUN_ARCHIVE.openPromise;
+  ZEVULUN_ARCHIVE.openPromise=new Promise(resolve=>{
+    let req=null,settled=false,timer=null;
+    const finish=db=>{if(settled)return;settled=true;if(timer)clearTimeout(timer);resolve(db||null)};
+    try{req=indexedDB.open(ZEVULUN_JOURNAL_DB,1)}catch(e){zevulunArchiveFailure(e);finish(null);return}
+    timer=setTimeout(()=>{zevulunArchiveFailure("archive open timed out");finish(null)},5000);
+    req.onupgradeneeded=()=>{
+      const db=req.result;
+      if(!db.objectStoreNames.contains(ZEVULUN_CANDLE_ARCHIVE_STORE))db.createObjectStore(ZEVULUN_CANDLE_ARCHIVE_STORE,{keyPath:"t"});
+      if(!db.objectStoreNames.contains(ZEVULUN_RUNWAY_ARCHIVE_STORE))db.createObjectStore(ZEVULUN_RUNWAY_ARCHIVE_STORE,{keyPath:"t1"});
+    };
+    req.onsuccess=()=>{const db=req.result;db.onversionchange=()=>{try{db.close()}catch(e){}};finish(db)};
+    req.onerror=()=>{zevulunArchiveFailure(req.error||"archive open failed");finish(null)};
+    req.onblocked=()=>zevulunArchiveFailure("archive database blocked by another Zevulun tab");
+  });
+  return ZEVULUN_ARCHIVE.openPromise;
+}
+function zevulunTimestamp(value){
+  if(value instanceof Date)return value.getTime();
+  const n=+value;if(Number.isFinite(n)&&n>0)return n;
+  if(typeof value==="string"){const parsed=Date.parse(value);if(Number.isFinite(parsed)&&parsed>0)return parsed}
+  return 0;
+}
+function zevulunMinuteStamp(value){const n=zevulunTimestamp(value);return n>0?Math.floor(n/60000)*60000:0}
+function zevulunCandleRank(c){
+  const src=String(c&&c.src||"").toLowerCase();
+  if(src.includes("binance-kline"))return 70;
+  if(src.includes("binance-rest"))return 65;
+  if(src.includes("bingx-rest"))return 55;
+  if(src.includes("rest"))return 50;
+  if(src.includes("memory"))return 30;
+  if(src.includes("binance-aggtrade"))return 20;
+  if(src.includes("pulse"))return 15;
+  return 25;
+}
+function normalizeZevulunCandle(c,source){
+  if(!c)return null;
+  const t=zevulunMinuteStamp(c.t),o=+c.o,h=+c.h,l=+c.l,close=+c.c,v=Number.isFinite(+c.v)?+c.v:0;
+  if(!(t>0&&o>0&&h>0&&l>0&&close>0))return null;
+  const n=Number.isFinite(+c.n)?+c.n:null;
+  const tb=Number.isFinite(+c.tb)?+c.tb:null;
+  const explicitClosed=c.x===1||c.x===true;
+  const agedOut=t+60000<=minuteBucket(Date.now());
+  const closed=explicitClosed||agedOut?1:0;
+  return {t,o,h,l,c:close,v,n,tb,x:closed,src:c.src||source||"zevulun-memory"};
+}
+function chooseZevulunCandle(existing,incoming){
+  if(!existing)return incoming;if(!incoming)return existing;
+  const er=zevulunCandleRank(existing),nr=zevulunCandleRank(incoming);
+  const base=nr>er?incoming:nr<er?existing:incoming,other=base===incoming?existing:incoming;
+  const pick=(a,b)=>a!==null&&a!==undefined?a:b;
+  return {
+    t:+base.t,o:+base.o,h:Math.max(+base.h,+other.h),l:Math.min(+base.l,+other.l),c:+base.c,
+    v:Number.isFinite(+base.v)?+base.v:(+other.v||0),n:pick(base.n,other.n),tb:pick(base.tb,other.tb),
+    x:(base.x||other.x)?1:0,src:base.src||other.src||"zevulun-memory"
+  };
+}
+function normalizeZevulunRestKline(k,source){
+  if(Array.isArray(k))return normalizeZevulunCandle({
+    t:+k[0]||+k[6]||Date.now(),o:+k[1],h:+k[2],l:+k[3],c:+k[4],v:+k[5]||0,
+    n:Number.isFinite(+k[8])?+k[8]:null,tb:Number.isFinite(+k[9])?+k[9]:null,src:source
+  },source);
+  return normalizeZevulunCandle({
+    t:+(k.time||k.openTime||k.T||k.t||Date.now()),o:+(k.open||k.o),h:+(k.high||k.h),l:+(k.low||k.l),c:+(k.close||k.c),
+    v:+(k.volume||k.v||0),n:Number.isFinite(+(k.trades??k.count??k.n))?+(k.trades??k.count??k.n):null,
+    tb:Number.isFinite(+(k.takerBuyVolume??k.takerBuyBaseVolume??k.V??k.tb))?+(k.takerBuyVolume??k.takerBuyBaseVolume??k.V??k.tb):null,src:source,x:k.x
+  },source);
+}
+function zevulunMergeCandles(rows){
+  const map=new Map();
+  for(const c of P29.candles||[]){const n=normalizeZevulunCandle(c,c&&c.src);if(n)map.set(n.t,chooseZevulunCandle(map.get(n.t),n))}
+  for(const c of rows||[]){const n=normalizeZevulunCandle(c,c&&c.src);if(n)map.set(n.t,chooseZevulunCandle(map.get(n.t),n))}
+  P29.candles=Array.from(map.values()).sort((a,b)=>a.t-b.t).slice(-MAX_CANDLES);
+  return P29.candles.length;
+}
+function upsertZevulunCandle(bar){
+  const incoming=normalizeZevulunCandle(bar,bar&&bar.src);if(!incoming)return false;
+  let idx=-1;for(let i=P29.candles.length-1;i>=0&&i>=P29.candles.length-12;i--){if(+P29.candles[i].t===incoming.t){idx=i;break}}
+  if(idx<0)P29.candles.push(incoming);else P29.candles[idx]=chooseZevulunCandle(P29.candles[idx],incoming);
+  P29.candles.sort((a,b)=>a.t-b.t);if(P29.candles.length>MAX_CANDLES)P29.candles=P29.candles.slice(-MAX_CANDLES);
+  if(incoming.x)zevulunArchiveCandles([incoming]);
+  return true;
+}
+async function zevulunArchiveCandles(rows){
+  const list=(Array.isArray(rows)?rows:[]).map(c=>normalizeZevulunCandle(c,c&&c.src)).filter(c=>c&&c.x);
+  if(!list.length)return 0;
+  const sig=list.map(c=>[c.t,c.c,c.v,c.n,c.tb,c.src].join(":" )).join("|");
+  if(sig===ZEVULUN_ARCHIVE.lastCandleBatch)return 0;
+  try{
+    const db=await openZevulunArchive();if(!db)return 0;
+    return await new Promise(resolve=>{
+      let tx;try{tx=db.transaction(ZEVULUN_CANDLE_ARCHIVE_STORE,"readwrite")}catch(e){zevulunArchiveFailure(e);resolve(0);return}
+      const store=tx.objectStore(ZEVULUN_CANDLE_ARCHIVE_STORE);for(const c of list)store.put(c);
+      tx.oncomplete=()=>{ZEVULUN_ARCHIVE.lastCandleBatch=sig;resolve(list.length)};
+      tx.onerror=()=>{zevulunArchiveFailure(tx.error||"candle archive write failed");resolve(0)};
+      tx.onabort=()=>{zevulunArchiveFailure(tx.error||"candle archive write aborted");resolve(0)};
+    });
+  }catch(e){zevulunArchiveFailure(e);return 0}
+}
+async function zevulunReadCandleArchive(){
+  try{
+    const db=await openZevulunArchive();
+    if(!db)return {rows:[],mode:"rolling-window-fallback",error:ZEVULUN_ARCHIVE.lastError||"IndexedDB unavailable"};
+    return await new Promise(resolve=>{
+      let tx;try{tx=db.transaction(ZEVULUN_CANDLE_ARCHIVE_STORE,"readonly")}catch(e){zevulunArchiveFailure(e);resolve({rows:[],mode:"rolling-window-fallback",error:String(e)});return}
+      const store=tx.objectStore(ZEVULUN_CANDLE_ARCHIVE_STORE);
+      if(typeof store.getAll==="function"){
+        const req=store.getAll();req.onsuccess=()=>resolve({rows:Array.isArray(req.result)?req.result:[],mode:"persistent-indexeddb",error:null});
+        req.onerror=()=>{zevulunArchiveFailure(req.error||"candle archive read failed");resolve({rows:[],mode:"rolling-window-fallback",error:ZEVULUN_ARCHIVE.lastError})};
+      }else{
+        const rows=[],req=store.openCursor();req.onsuccess=()=>{const cur=req.result;if(cur){rows.push(cur.value);cur.continue()}else resolve({rows,mode:"persistent-indexeddb",error:null})};
+        req.onerror=()=>{zevulunArchiveFailure(req.error||"candle archive cursor failed");resolve({rows:[],mode:"rolling-window-fallback",error:ZEVULUN_ARCHIVE.lastError})};
+      }
+    });
+  }catch(e){zevulunArchiveFailure(e);return {rows:[],mode:"rolling-window-fallback",error:ZEVULUN_ARCHIVE.lastError}}
+}
+async function zevulunArchiveRunways(rows){
+  const list=dedupeZevulunRunways(rows);
+  if(!list.length)return 0;
+  try{
+    const db=await openZevulunArchive();if(!db)return 0;
+    return await new Promise(resolve=>{
+      let tx;try{tx=db.transaction(ZEVULUN_RUNWAY_ARCHIVE_STORE,"readwrite")}catch(e){zevulunArchiveFailure(e);resolve(0);return}
+      const store=tx.objectStore(ZEVULUN_RUNWAY_ARCHIVE_STORE);for(const r of list)store.put(r);
+      tx.oncomplete=()=>resolve(list.length);
+      tx.onerror=()=>{zevulunArchiveFailure(tx.error||"runway archive write failed");resolve(0)};
+      tx.onabort=()=>{zevulunArchiveFailure(tx.error||"runway archive write aborted");resolve(0)};
+    });
+  }catch(e){zevulunArchiveFailure(e);return 0}
+}
+async function zevulunReadRunwayArchive(){
+  try{
+    const db=await openZevulunArchive();
+    if(!db)return {rows:[],mode:"ledger-window-fallback",error:ZEVULUN_ARCHIVE.lastError||"IndexedDB unavailable"};
+    return await new Promise(resolve=>{
+      let tx;try{tx=db.transaction(ZEVULUN_RUNWAY_ARCHIVE_STORE,"readonly")}catch(e){zevulunArchiveFailure(e);resolve({rows:[],mode:"ledger-window-fallback",error:String(e)});return}
+      const store=tx.objectStore(ZEVULUN_RUNWAY_ARCHIVE_STORE);
+      if(typeof store.getAll==="function"){
+        const req=store.getAll();req.onsuccess=()=>resolve({rows:Array.isArray(req.result)?req.result:[],mode:"persistent-indexeddb",error:null});
+        req.onerror=()=>{zevulunArchiveFailure(req.error||"runway archive read failed");resolve({rows:[],mode:"ledger-window-fallback",error:ZEVULUN_ARCHIVE.lastError})};
+      }else{
+        const rows=[],req=store.openCursor();req.onsuccess=()=>{const cur=req.result;if(cur){rows.push(cur.value);cur.continue()}else resolve({rows,mode:"persistent-indexeddb",error:null})};
+        req.onerror=()=>{zevulunArchiveFailure(req.error||"runway archive cursor failed");resolve({rows:[],mode:"ledger-window-fallback",error:ZEVULUN_ARCHIVE.lastError})};
+      }
+    });
+  }catch(e){zevulunArchiveFailure(e);return {rows:[],mode:"ledger-window-fallback",error:ZEVULUN_ARCHIVE.lastError}}
+}
+async function zevulunClearRunwayArchive(){
+  try{const db=await openZevulunArchive();if(!db)return false;return await new Promise(resolve=>{
+    let tx;try{tx=db.transaction(ZEVULUN_RUNWAY_ARCHIVE_STORE,"readwrite")}catch(e){zevulunArchiveFailure(e);resolve(false);return}
+    tx.objectStore(ZEVULUN_RUNWAY_ARCHIVE_STORE).clear();tx.oncomplete=()=>resolve(true);
+    tx.onerror=()=>{zevulunArchiveFailure(tx.error||"runway archive clear failed");resolve(false)};tx.onabort=()=>resolve(false);
+  })}catch(e){zevulunArchiveFailure(e);return false}
+}
+function savePapillonCandles(){
+  try{localStorage.setItem(STORE_CANDLES,JSON.stringify(P29.candles.slice(-MAX_CANDLES)))}catch(e){}
+  zevulunArchiveCandles(P29.candles.filter(c=>c&&c.x).slice(-3));
+}
+function loadPapillonCandles(){
+  try{
+    const arr=JSON.parse(localStorage.getItem(STORE_CANDLES)||"[]");
+    P29.candles=[];if(Array.isArray(arr))zevulunMergeCandles(arr.map(c=>Object.assign({src:"zevulun-memory"},c)));
+    if(P29.candles.length){P29.price=+P29.candles[P29.candles.length-1].c;p29Log("Restored "+P29.candles.length+" Zevulun candles from memory")}
+    zevulunArchiveCandles(P29.candles.filter(c=>c&&c.x));
+  }catch(e){P29.candles=[]}
+}
+async function bootstrapPapillonCandles(){
+  let loaded=false;
+  for(const url of PAPILLON_REST_KLINES){
+    try{
+      const r=await fetch(url,{cache:"no-store"}),j=await r.json();
+      const data=Array.isArray(j)?j:(Array.isArray(j.data)?j.data:[]);if(!data.length)continue;
+      const source=url.includes("binance.com")?"binance-rest":"bingx-rest";
+      const seed=data.map(k=>normalizeZevulunRestKline(k,source)).filter(Boolean);
+      zevulunMergeCandles(seed);
+      if(P29.candles.length){
+        P29.price=P29.candles[P29.candles.length-1].c;P29.lastTickAt=now();savePapillonCandles();
+        await zevulunArchiveCandles(P29.candles.filter(c=>c&&c.x));
+        loaded=true;p29Log("Bootstrapped "+P29.candles.length+" Zevulun candles from REST ("+url.split("/")[2]+")");break;
+      }
+    }catch(e){}
+  }
+  if(!loaded)p29Log("REST bootstrap unavailable; Zevulun candles will build from the live pulse");
+}
+function minuteBucket(ts){return Math.floor((+ts||Date.now())/60000)*60000}
+function updatePapillonCandle(price,ts,source){
+  if(!price||price<=0)return;
+  const t=minuteBucket(ts||now()),src=source||"bingx-pulse";let last=P29.candles[P29.candles.length-1];
+  if(last&&+last.t===t){
+    const pulse={t,o:+last.o||price,h:Math.max(+last.h||price,price),l:Math.min(+last.l||price,price),c:price,
+      v:String(last.src||"").includes("pulse")||String(last.src||"").includes("aggtrade")?(+last.v||0)+1:1,n:null,tb:null,x:0,src};
+    P29.candles[P29.candles.length-1]=chooseZevulunCandle(normalizeZevulunCandle(last,last.src),normalizeZevulunCandle(pulse,src));
+  }else{
+    if(last){last=normalizeZevulunCandle(Object.assign({},last,{x:1}),last.src);P29.candles[P29.candles.length-1]=last;zevulunArchiveCandles([last])}
+    const prev=last?+last.c:price;P29.candles.push({t,o:prev,h:Math.max(prev,price),l:Math.min(prev,price),c:price,v:1,n:null,tb:null,x:0,src});
+  }
+  if(P29.candles.length>MAX_CANDLES)P29.candles=P29.candles.slice(-MAX_CANDLES);savePapillonCandles();
+}
 async function decodePapillonPulse(data){if(typeof data==="string")return data; let buf=null; if(data instanceof Blob)buf=await data.arrayBuffer(); else if(data instanceof ArrayBuffer)buf=data; if(!buf)return ""; try{if(window.pako)return window.pako.ungzip(new Uint8Array(buf),{to:"string"})}catch(e){} try{return new TextDecoder("utf-8").decode(buf)}catch(e){return ""}}
 function extractPricePulse(d){const arr=[d&&d.data,d&&d.tick,d]; for(const o of arr){if(!o||typeof o!=="object")continue; const p=o.lastPrice??o.price??o.close??o.c??o.last??o.lp??o.latestPrice; const n=parseFloat(p); if(n>0)return n} return null}
 function extractDepthGravity(d){const data=d&&d.data; if(!data||typeof data!=="object")return null; const bids=Array.isArray(data.bids)?data.bids:null; const asks=Array.isArray(data.asks)?data.asks:null; if(!bids||!asks)return null; return {bids,asks,dataType:d.dataType||"",ts:now()}}
@@ -424,7 +646,7 @@ function updateDepthGravityField(d){
 }
 
 /* ==== PAPILLON P32.3 LIFTED · BLOODSTREAM WS ==== */
-function openPapillonBloodstream(){try{if(P29.ws)P29.ws.close()}catch(e){} const ws=new WebSocket(PAPILLON_BLOODSTREAM_WS); P29.ws=ws; ws.binaryType="arraybuffer"; ws.onopen=()=>{p29Log("Papillon bloodstream connected"); set("feedBadge","BINGX LIVE"); cls("feedBadge","pill good"); try{ws.send(JSON.stringify({id:"papillon_p30_"+P29.session+"_price",reqType:"sub",dataType:PAPILLON_PRICE_PULSE_CHANNEL})); ws.send(JSON.stringify({id:"papillon_p30_"+P29.session+"_depth",reqType:"sub",dataType:PAPILLON_DEPTH_GRAVITY_CHANNEL})); p29Log("Subscribed price pulse + depth gravity")}catch(e){p29Log("Papillon subscribe failed")}}; ws.onmessage=async(ev)=>{try{const text=await decodePapillonPulse(ev.data); if(!text)return; if(text==="Ping"||/"ping"/i.test(text)){try{ws.send("Pong")}catch(e){};try{ws.send(JSON.stringify({pong:Date.now()}))}catch(e){};return} let d=null; try{d=JSON.parse(text)}catch(e){return} if(d&&(d.ping||d.Ping)){try{ws.send(JSON.stringify({pong:d.ping||d.Ping}))}catch(e){};return} const depth=extractDepthGravity(d); if(depth)updateDepthGravityField(depth); const p=extractPricePulse(d); if(p>0){P29.prevPrice=P29.price;P29.price=p;P29.lastTickAt=now();updatePapillonCandle(p,P29.lastTickAt)}}catch(e){}}; ws.onerror=()=>p29Log("Papillon bloodstream error"); ws.onclose=()=>{p29Log("Papillon bloodstream closed; reconnecting"); set("feedBadge","RECONNECT"); cls("feedBadge","pill warn"); setTimeout(openPapillonBloodstream,2500)}}
+function openPapillonBloodstream(){try{if(P29.ws)P29.ws.close()}catch(e){} const ws=new WebSocket(PAPILLON_BLOODSTREAM_WS); P29.ws=ws; ws.binaryType="arraybuffer"; ws.onopen=()=>{p29Log("Zevulun bloodstream connected"); set("feedBadge","BINGX LIVE"); cls("feedBadge","pill good"); try{ws.send(JSON.stringify({id:"zevulun_velocity_"+P29.session+"_price",reqType:"sub",dataType:PAPILLON_PRICE_PULSE_CHANNEL})); ws.send(JSON.stringify({id:"zevulun_velocity_"+P29.session+"_depth",reqType:"sub",dataType:PAPILLON_DEPTH_GRAVITY_CHANNEL})); p29Log("Subscribed price pulse + depth gravity")}catch(e){p29Log("Zevulun subscribe failed")}}; ws.onmessage=async(ev)=>{try{const text=await decodePapillonPulse(ev.data); if(!text)return; if(text==="Ping"||/"ping"/i.test(text)){try{ws.send("Pong")}catch(e){};try{ws.send(JSON.stringify({pong:Date.now()}))}catch(e){};return} let d=null; try{d=JSON.parse(text)}catch(e){return} if(d&&(d.ping||d.Ping)){try{ws.send(JSON.stringify({pong:d.ping||d.Ping}))}catch(e){};return} const depth=extractDepthGravity(d); if(depth)updateDepthGravityField(depth); const p=extractPricePulse(d); if(p>0){P29.prevPrice=P29.price;P29.price=p;P29.lastTickAt=now();updatePapillonCandle(p,P29.lastTickAt,"bingx-pulse")}}catch(e){}}; ws.onerror=()=>p29Log("Zevulun bloodstream error"); ws.onclose=()=>{p29Log("Zevulun bloodstream closed; reconnecting"); set("feedBadge","RECONNECT"); cls("feedBadge","pill warn"); setTimeout(openPapillonBloodstream,2500)}}
 
 /* ==== PAPILLON P32.3 LIFTED · EVIDENCE LEDGER SEAL CORE ==== */
 function p32Log(msg){const e=q("p32Ledger"); if(!e)return; const t=new Date().toLocaleTimeString("en-GB",{hour12:false}); e.textContent=`[${t}] ${msg}\n`+e.textContent.slice(0,7000)}
@@ -480,7 +702,13 @@ function p32ImportedCandleAnchor(){normalizeP32Continuity(); return +(P32.contin
 function p32EffectiveCandles(){return Math.max(P29.candles.length,p32ImportedCandleAnchor())}
 function p32EvidenceTier(){const n=p32EffectiveCandles(); if(n>=1600)return "MATURE EVIDENCE"; if(n>=400)return "WARMUP EVIDENCE"; return "BUILDING"}
 function p32ContinuityGrade(){const n=p32EffectiveCandles(); if(n>=1600)return "MATURE"; if(n>=400)return "WARMUP"; return "EARLY"}
-function p32MergeCandlesFromTail(tail){if(!Array.isArray(tail)||!tail.length)return 0; const map=new Map(); for(const c of P29.candles||[]){if(c&&c.t)map.set(+c.t,c)} for(const c of tail){if(c&&c.t&&c.c){map.set(+c.t,{t:+c.t,o:+(c.o||c.c),h:+(c.h||c.c),l:+(c.l||c.c),c:+c.c,v:+(c.v||0)})}} P29.candles=Array.from(map.values()).sort((a,b)=>a.t-b.t).slice(-MAX_CANDLES); if(P29.candles.length){P29.price=P29.candles[P29.candles.length-1].c;P29.lastTickAt=P29.lastTickAt||now();savePapillonCandles();} return tail.length;}
+function p32MergeCandlesFromTail(tail){
+  if(!Array.isArray(tail)||!tail.length)return 0;
+  const rows=tail.map(c=>normalizeZevulunCandle(Object.assign({src:"zevulun-resume"},c),c&&c.src||"zevulun-resume")).filter(Boolean);
+  zevulunMergeCandles(rows);
+  if(P29.candles.length){P29.price=P29.candles[P29.candles.length-1].c;P29.lastTickAt=P29.lastTickAt||now();savePapillonCandles();zevulunArchiveCandles(P29.candles.filter(c=>c&&c.x))}
+  return rows.length;
+}
 function p32ImportEvidencePayload(payload,fileName){
  loadP32Evidence(); normalizeP32Continuity();
  const importedCount=+(payload.effectiveCandles||payload.importedCandleAnchor||payload.candles||payload.candleCount||0);
@@ -560,7 +788,7 @@ function rebuildSeries(){
   CORE.c.length=CORE.h.length=CORE.l.length=CORE.v.length=CORE.src.length=CORE.t.length=0;
   for(let i=0;i<n;i++){ const k=cd[i];
     CORE.c.push(k.c*TICK_MULT); CORE.h.push(k.h*TICK_MULT); CORE.l.push(k.l*TICK_MULT);
-    CORE.v.push(+k.v||0); CORE.src.push(k.src==="rest"?1:0); CORE.t.push(+k.t);
+    CORE.v.push(+k.v||0); CORE.src.push(/rest|kline/.test(String(k.src||""))?1:0); CORE.t.push(+k.t);
   }
   // atr14 EMA(span14, adjust=false): alpha=2/15, seed=TR0
   CORE.atr.length=0; const a=2/15;
@@ -805,74 +1033,134 @@ function updatePast(){
 function fmtHM(ms){return new Date(ms).toLocaleTimeString("en-GB",{hour12:false,hour:"2-digit",minute:"2-digit"})}
 function fmtDay(ms){return new Date(ms).toLocaleDateString("en-GB",{weekday:"short",day:"2-digit",month:"short",year:"numeric"})}
 function extractAllLegs(){
-  const c=CORE.c;if(!c||c.length<300)return[];const legs=[],R=350;let d=0,extreme=c[0],start=0,spx=c[0];
+  const c=CORE.c;if(!c||c.length<300)return[];
+  const legs=[],R=350;let d=0,extreme=c[0],start=0,spx=c[0],peakIdx=0,originIdx=0,anchored=false;
   for(let i=1;i<c.length;i++){
-    if(d===0){if(c[i]-spx>=R){d=1;extreme=c[i];start=0}else if(spx-c[i]>=R){d=-1;extreme=c[i];start=0}continue}
-    if(d===1){if(c[i]>extreme)extreme=c[i];if(extreme-c[i]>=R){legs.push({dir:1,start,end:i,ext:extreme-spx,spx:spx,epk:extreme});d=-1;spx=extreme;start=i;extreme=c[i]}}
-    else{if(c[i]<extreme)extreme=c[i];if(c[i]-extreme>=R){legs.push({dir:-1,start,end:i,ext:spx-extreme,spx:spx,epk:extreme});d=1;spx=extreme;start=i;extreme=c[i]}}
+    if(d===0){
+      if(c[i]-spx>=R){d=1;extreme=c[i];peakIdx=i;start=0;originIdx=0;anchored=false}
+      else if(spx-c[i]>=R){d=-1;extreme=c[i];peakIdx=i;start=0;originIdx=0;anchored=false}
+      continue;
+    }
+    if(d===1){
+      if(c[i]>extreme){extreme=c[i];peakIdx=i}
+      if(extreme-c[i]>=R){
+        legs.push({dir:1,start,end:i,peakIdx,originIdx,anchored,ext:extreme-spx,spx,epk:extreme});
+        const nextOriginIdx=peakIdx;d=-1;spx=extreme;start=i;originIdx=nextOriginIdx;extreme=c[i];peakIdx=i;anchored=true;
+      }
+    }else{
+      if(c[i]<extreme){extreme=c[i];peakIdx=i}
+      if(c[i]-extreme>=R){
+        legs.push({dir:-1,start,end:i,peakIdx,originIdx,anchored,ext:spx-extreme,spx,epk:extreme});
+        const nextOriginIdx=peakIdx;d=1;spx=extreme;start=i;originIdx=nextOriginIdx;extreme=c[i];peakIdx=i;anchored=true;
+      }
+    }
   }
   return legs;
 }
 function pastRowHTML(L){
-    const t=fmtHM(CORE.t[L.start]),tD=fmtHM(CORE.t[L.end]);
-    const dir=L.dir===1?"LONG":"SHORT",cls=L.dir===1?"good":"bad";
-    const ip=fmtPrice(CORE.c[L.start]/TICK_MULT),fp=fmtPrice(CORE.c[L.end]/TICK_MULT);
-    return `<div class="past"><b class="${cls}">${dir}</b> ${t}→${tD} @ ${ip}→${fp} · <b>+${Math.round(L.ext)}t</b> in ${L.end-L.start}m</div>`;}
+  const t=fmtHM(CORE.t[L.start]),tD=fmtHM(CORE.t[L.end]);
+  const dir=L.dir===1?"LONG":"SHORT",cname=L.dir===1?"good":"bad";
+  const ip=fmtPrice(L.spx/TICK_MULT),fp=fmtPrice(L.epk/TICK_MULT);
+  return `<div class="past"><b class="${cname}">${dir}</b> ${t}→${tD} @ ${ip}→${fp} · <b>+${Math.round(L.ext)}t</b> in ${L.end-L.start}m</div>`;
+}
 function pastDayHTML(label){return `<div class="past" style="opacity:.6;margin-top:6px;border:0;font-size:11px;letter-spacing:.5px">— ${label} —</div>`;}
-/* ==== permanent completed-runway archive (survives candle-buffer eviction & reloads) ==== */
-function legKey(t0){return String(Math.round(t0/60000))}
+function zevulunRunwayKey(t1){return "ZEVULUN-RUNWAY-"+minuteBucket(t1)}
+function normalizeZevulunRunway(r){
+  if(!r||typeof r!=="object")return null;
+  const dir=+r.dir===1?1:+r.dir===-1?-1:0;
+  const t1=zevulunMinuteStamp(r.t1??r.completedAt??r.closedAt),t0=zevulunMinuteStamp(r.t0??r.startTime??r.armedAt);
+  const tOrigin=zevulunMinuteStamp(r.tOrigin??r.originTime??r.t0??r.startTime??r.armedAt);
+  const tpkRaw=zevulunTimestamp(r.tpk??r.peakTime),tpk=tpkRaw>0?zevulunMinuteStamp(tpkRaw):t1;
+  const origin=+(r.origin??r.ipx??r.anchor),peak=+(r.peak??r.fpx??r.peakPrice),completion=+((r.completion??r.cfx??r.completionPrice)??0);
+  const ext=Math.round(+(r.ext??r.extractedT??r.mfe));
+  const dur=Math.max(0,Math.round(Number.isFinite(+(r.dur??r.durationM))?+(r.dur??r.durationM):((t1-t0)/60000)));
+  if(!(dir&&t0>0&&t1>0&&origin>0&&peak>0&&Number.isFinite(ext)&&ext>=0))return null;
+  return {
+    ...r,k:zevulunRunwayKey(t1),dir,tOrigin:tOrigin||t0,t0,tpk,t1,origin,peak,completion:completion>0?completion:null,
+    ipx:origin,fpx:peak,cfx:completion>0?completion:null,ext,dur,anchored:r.anchored===true,
+    peakTimeEstimated:r.peakTimeEstimated===true||!(tpkRaw>0),archiveVersion:"ZEVULUN_VOYAGE_V2"
+  };
+}
+function zevulunRunwayQuality(r){
+  if(!r)return -1;let s=0;if(r.anchored)s+=100;if(r.tpk&&r.tpk!==r.t1)s+=20;if(r.tOrigin&&r.tOrigin!==r.t0)s+=10;
+  if(r.completion)s+=5;if(r.origin)s+=3;if(r.peak)s+=3;return s;
+}
+function chooseZevulunRunway(existing,incoming){
+  if(!existing)return incoming;if(!incoming)return existing;
+  const es=zevulunRunwayQuality(existing),is=zevulunRunwayQuality(incoming);
+  let base=is>es?incoming:is<es?existing:((+incoming.t0||Infinity)<(+existing.t0||Infinity)?incoming:existing);
+  const other=base===incoming?existing:incoming,out={...other,...base};
+  for(const k of Object.keys(other))if((out[k]===null||out[k]===undefined||out[k]==="")&&other[k]!==null&&other[k]!==undefined)out[k]=other[k];
+  out.k=zevulunRunwayKey(out.t1);return out;
+}
+function dedupeZevulunRunways(rows){
+  const map=new Map();
+  for(const raw of Array.isArray(rows)?rows:[]){const r=normalizeZevulunRunway(raw);if(!r)continue;map.set(r.t1,chooseZevulunRunway(map.get(r.t1),r))}
+  return Array.from(map.values()).sort((a,b)=>a.t1-b.t1);
+}
+function zevulunRunwayJournalMessage(r){
+  const x=normalizeZevulunRunway(r);if(!x)return "VOYAGE COMPLETE · invalid runway record";
+  return "VOYAGE COMPLETE · "+(x.dir===1?"LONG":"SHORT")+" · "+fmtDay(x.t0)+" "+fmtHM(x.t0)+"→"+fmtHM(x.t1)+" · peak "+fmtHM(x.tpk)+" · "+fmtPrice(x.origin/TICK_MULT)+"→"+fmtPrice(x.peak/TICK_MULT)+" · +"+x.ext+"t · "+x.dur+"m";
+}
 function archiveLegs(legs){
-  P32.history=P32.history||[];
-  const seen=new Set(P32.history.map(r=>r.k));
-  let added=0;
-  for(const L of legs){
-    const t0=CORE.t[L.start], t1=CORE.t[L.end]; if(t0==null||t1==null)continue;
-    const k=legKey(t0); if(seen.has(k))continue;
-    P32.history.push({k,dir:L.dir,t0,t1,ipx:(L.spx!=null?L.spx:CORE.c[L.start]),fpx:(L.epk!=null?L.epk:CORE.c[L.end]),cfx:(CORE.c[L.start]!=null?CORE.c[L.start]:null),ext:Math.round(L.ext),dur:L.end-L.start});
-    seen.add(k); added++;
+  const legRows=Array.isArray(legs)?legs:[],firstPass=!ZEVULUN_ARCHIVE.runwayBackfillComplete&&legRows.length>0;
+  if(firstPass)ZEVULUN_ARCHIVE.runwayBackfillCutoff=legRows.reduce((m,L)=>Math.max(m,+((L&&CORE.t&&CORE.t[L.end])||0)),0);
+  const before=dedupeZevulunRunways(P32.history||[]),map=new Map(before.map(r=>[r.t1,r])),added=[];let changed=before.length!==(P32.history||[]).length;
+  for(const L of legRows){
+    if(!L)continue;
+    const t0=CORE.t[L.start],t1=CORE.t[L.end],tpk=CORE.t[L.peakIdx],tOrigin=CORE.t[L.originIdx];if(!(t0&&t1))continue;
+    const fullyObservedThisSession=t0>=minuteBucket(ZEVULUN_ARCHIVE.sessionStartedAt);
+    if(L.anchored!==true&&!fullyObservedThisSession)continue; // exclude only a runway whose prior pivot predates this browser session
+    const incoming=normalizeZevulunRunway({
+      dir:L.dir,tOrigin,t0,tpk,t1,origin:L.spx,peak:L.epk,completion:CORE.c[L.end],ext:Math.round(L.ext),dur:L.end-L.start,anchored:L.anchored===true||fullyObservedThisSession,
+      source:"ZEVULUN_CLOSE_ZIGZAG"
+    });
+    if(!incoming)continue;
+    const prior=map.get(incoming.t1),merged=chooseZevulunRunway(prior,incoming);
+    if(!prior){map.set(incoming.t1,merged);added.push(merged);changed=true}
+    else if(JSON.stringify(prior)!==JSON.stringify(merged)){map.set(incoming.t1,merged);changed=true}
   }
-  if(added){P32.history.sort((a,b)=>a.t0-b.t0);saveP32History()}
+  const fullHistory=Array.from(map.values()).sort((a,b)=>a.t1-b.t1);
+  if(changed)zevulunArchiveRunways(fullHistory);
+  P32.history=fullHistory.slice(-ZEVULUN_RUNWAY_MEMORY_LIMIT);
+  if(changed)saveP32History();
+  if(added.length){
+    if(firstPass)p29Log("Completed Runways archive backfilled · "+added.length+" stable voyage(s)");
+    else for(const r of added)p29Log(zevulunRunwayJournalMessage(r));
+  }
+  if(legRows.length)ZEVULUN_ARCHIVE.runwayBackfillComplete=true;
   return P32.history;
 }
-function archivedRows(){ // normalized, newest-first, for rendering + export
-  return (P32.history||[]).slice().sort((a,b)=>b.t0-a.t0);
-}
+function archivedRows(){return dedupeZevulunRunways(P32.history||[]).sort((a,b)=>b.t1-a.t1)}
 function pastListRender(){
   const el=q("pastList");if(!el)return;
-  const legs=extractAllLegs();
-  updateCurRunway(legs);
-  archiveLegs(legs);
-  const rows=archivedRows();
-  updateDailySummary(legs);
+  const legs=extractAllLegs();updateCurRunway(legs);archiveLegs(legs);
+  const rows=archivedRows();updateDailySummary(rows);
   if(!rows.length){el.innerHTML="No completed runways in memory yet.";return}
   let html="",lastDay="";
-  for(const r of rows){const day=fmtDay(r.t0);
-    if(day!==lastDay){html+=pastDayHTML(day);lastDay=day}
-    const dir=r.dir===1?"LONG":"SHORT",cls=r.dir===1?"good":"bad";
-      const t=fmtHM(r.t0),tD=fmtHM(r.t1),ip=fmtPrice(r.ipx/TICK_MULT),fp=fmtPrice(r.fpx/TICK_MULT);
-      const cf=(r.cfx!=null)?fmtPrice(r.cfx/TICK_MULT):null;
-      const sub=(cf&&cf!==ip)?`<div class="pastcf">confirmed @ ${cf}</div>`:"";
-      html+=`<div class="past"><b class="${cls}">${dir}</b> ${t}→${tD} @ ${ip}→${fp} · <b>+${r.ext}t</b> in ${r.dur}m${sub}</div>`;}
+  for(const r of rows){
+    const day=fmtDay(r.t0);if(day!==lastDay){html+=pastDayHTML(day);lastDay=day}
+    const dir=r.dir===1?"LONG":"SHORT",cname=r.dir===1?"good":"bad";
+    const t=fmtHM(r.t0),tD=fmtHM(r.t1),ip=fmtPrice(r.origin/TICK_MULT),fp=fmtPrice(r.peak/TICK_MULT);
+    const cf=r.completion?fmtPrice(r.completion/TICK_MULT):null,sub=cf&&cf!==fp?`<div class="pastcf">flip confirmed @ ${cf}</div>`:"";
+    html+=`<div class="past"><b class="${cname}">${dir}</b> ${t}→${tD} @ ${ip}→${fp} · <b>+${r.ext}t</b> in ${r.dur}m${sub}</div>`;
+  }
   el.innerHTML=html;
 }
 function updateCurRunway(legs){
-  const el=q("curRunway");if(!el)return;
-  const c=CORE.c;if(!c||!c.length){return}
-  const lastEnd=legs.length?legs[legs.length-1].end:0;
-  const dir=(typeof CORE!=="undefined"&&CORE.leg&&CORE.leg.dir)||0;
-  if(dir!==0){const sPx=(CORE.leg.startPx!=null)?CORE.leg.startPx:c[CORE.leg.start||lastEnd];
-    const st=CORE.t[CORE.leg.start!=null?CORE.leg.start:lastEnd];
-    const age=Math.round(CORE.leg.age!=null?CORE.leg.age:(c.length-1-lastEnd));
-    const dirTxt=dir===1?"LONG":"SHORT";
-    const mv=Math.round(Math.abs(c[c.length-1]-(sPx||c[lastEnd])));
-    setCurRunway(dirTxt,dir,fmtHM(st),age,mv,sPx);
-  } else setCurRunway(null);
+  const el=q("curRunway");if(!el)return;const c=CORE.c;if(!c||!c.length)return;
+  const lastEnd=legs.length?legs[legs.length-1].end:0,dir=(typeof CORE!=="undefined"&&CORE.leg&&CORE.leg.dir)||0;
+  if(dir!==0){
+    const sPx=CORE.leg.startPx!=null?CORE.leg.startPx:c[CORE.leg.start||lastEnd],st=CORE.t[CORE.leg.start!=null?CORE.leg.start:lastEnd];
+    const age=Math.round(CORE.leg.age!=null?CORE.leg.age:(c.length-1-lastEnd)),dirTxt=dir===1?"LONG":"SHORT";
+    const mv=Math.round(Math.abs(c[c.length-1]-(sPx||c[lastEnd])));setCurRunway(dirTxt,dir,fmtHM(st),age,mv,sPx);
+  }else setCurRunway(null);
 }
-
-function setCurRunway(dirTxt,dir,startHM,age,mv,sPx){const el=q("curRunway");if(!el)return;
-  if(!dirTxt){el.innerHTML="No live runway · awaiting ignition.";return}
-  const cls=dir===1?"good":"bad";const ip=(sPx!=null)?fmtPrice(sPx/TICK_MULT):"—";
-  el.innerHTML=`▶ LIVE <b class="${cls}">${dirTxt}</b> · since ${startHM} @ ${ip} · ${age}m ago · moved <b>${mv}t</b> · target 350t`;}
+function setCurRunway(dirTxt,dir,startHM,age,mv,sPx){
+  const el=q("curRunway");if(!el)return;if(!dirTxt){el.innerHTML="No live runway · awaiting ignition.";return}
+  const cname=dir===1?"good":"bad",ip=sPx!=null?fmtPrice(sPx/TICK_MULT):"—";
+  el.innerHTML=`▶ LIVE <b class="${cname}">${dirTxt}</b> · since ${startHM} @ ${ip} · ${age}m ago · moved <b>${mv}t</b> · target 350t`;
+}
 
 /* ---- P33 arming: trigger/firing via lifted P32 evidence chain ---- */
 function p33TryArm(sc){
@@ -918,22 +1206,15 @@ function p33Lifecycle(sc){
 
 /* ---- REST re-sync every 15 min: heal gaps + real-volume candles ---- */
 async function restResync(){
-  if(now()-P33.lastRestSync < 15*60*1000) return;
-  P33.lastRestSync=now();
+  if(now()-P33.lastRestSync<15*60*1000)return;P33.lastRestSync=now();
   try{
     for(const url of PAPILLON_REST_KLINES){
-      const r=await fetch(url,{cache:"no-store"}); const j=await r.json();
-      const data=Array.isArray(j)?j:(Array.isArray(j.data)?j.data:[]);
-      if(!data.length) continue;
-      const map=new Map(); for(const cd of P29.candles) map.set(+cd.t,cd);
-      for(const k of data){
-        const o=Array.isArray(k)?{t:+k[0]||+k[6],o:+k[1],h:+k[2],l:+k[3],c:+k[4],v:+k[5]||0}
-          :{t:+(k.time||k.openTime||k.T||k.t),o:+(k.open||k.o),h:+(k.high||k.h),l:+(k.low||k.l),c:+(k.close||k.c),v:+(k.volume||k.v||0)};
-        if(o.c>0){ o.src="rest"; map.set(minuteBucket(o.t),Object.assign({},o,{t:minuteBucket(o.t)})); }
-      }
-      P29.candles=Array.from(map.values()).sort((a,b)=>a.t-b.t).slice(-MAX_CANDLES);
-      savePapillonCandles(); p29Log("REST re-sync merged · "+P29.candles.length+" candles");
-      break;
+      const r=await fetch(url,{cache:"no-store"}),j=await r.json();
+      const data=Array.isArray(j)?j:(Array.isArray(j.data)?j.data:[]);if(!data.length)continue;
+      const source=url.includes("binance.com")?"binance-rest":"bingx-rest";
+      const seed=data.map(k=>normalizeZevulunRestKline(k,source)).filter(Boolean);
+      zevulunMergeCandles(seed);savePapillonCandles();await zevulunArchiveCandles(seed.filter(c=>c&&c.x));
+      p29Log("REST re-sync merged · "+P29.candles.length+" candles · "+source);break;
     }
   }catch(e){}
 }
@@ -1045,56 +1326,170 @@ function renderEvidenceView(){
   renderP32Evidence(Object.assign(view,{ledger:P32.ledger,active:P32.active}));
 }
 
-/* ---- runway history logging & export ---- */
+/* ---- Zevulun completed-runway history + Journal exports ---- */
 function logRunwayCompletion(r){
-  if(!r||!r.side)return;
-  const entry={startTime:r.armedAt||now(),startTimeText:new Date(r.armedAt||now()).toLocaleString("en-GB"),closedAt:r.closedAt||now(),closedAtText:new Date(r.closedAt||now()).toLocaleString("en-GB"),side:r.side,adversePath:r.adversePath||0,outcome:r.outcome,mfe:r.mfe||0,mae:r.mae||0,score:r.score||0};
-  P32.history=P32.history||[];
-  P32.history.unshift(entry);
-  P32.history=P32.history.slice(0,500);
-  saveP32History();
-  updateDailySummary();
+  const row=normalizeZevulunRunway(r);if(!row)return;
+  P32.history=dedupeZevulunRunways([...(P32.history||[]),row]);saveP32History();zevulunArchiveRunways([row]);p29Log(zevulunRunwayJournalMessage(row));updateDailySummary();
 }
-function exportRunwayHistory(fmt){
-  fmt=fmt||"json";archiveLegs(extractAllLegs());const legs=archivedRows().slice().reverse().map(r=>({start:r.t0/60000|0,end:r.t1/60000|0,dir:r.dir,ext:r.ext,dur:r.dur,t0:r.t0,t1:r.t1,ipx:r.ipx,fpx:r.fpx}));
-  if(!legs.length){p29Log("Export skipped · no completed runways yet");alert("No completed runways to export yet.");return}
-  const rows=legs.map(L=>({date:fmtDay(L.t0),start:fmtHM(L.t0),done:fmtHM(L.t1),side:L.dir===1?"LONG":"SHORT",ignitionPrice:fmtPrice(L.ipx/TICK_MULT),completionPrice:fmtPrice(L.fpx/TICK_MULT),extractedT:L.ext,durationM:L.dur}));
-  let blob,ext;
-  if(fmt==="txt"){
-    let out="CHRONOPAPILLON · Completed Runways\nExported "+new Date().toLocaleString("en-GB")+" · "+PAPILLON_SYMBOL+"\nTotal runways: "+rows.length+"\n";
-    let lastDay="";
-    for(const r of rows){if(r.date!==lastDay){out+="\n=== "+r.date+" ===\n";lastDay=r.date}
-      out+=r.side.padEnd(5)+" "+r.start+"\u2192"+r.done+" @ "+r.ignitionPrice+"\u2192"+r.completionPrice+" · +"+r.extractedT+"t · "+r.durationM+"m\n";}
-    blob=new Blob([out],{type:"text/plain"});ext="txt";
-  } else {
-    blob=new Blob([JSON.stringify({exportedAt:new Date().toISOString(),symbol:PAPILLON_SYMBOL,totalRunways:rows.length,runways:rows},null,2)],{type:"application/json"});ext="json";
-  }
-  const url=URL.createObjectURL(blob),a=document.createElement("a");
-  a.href=url;a.download="runway_history_"+Date.now()+"."+ext;a.click();URL.revokeObjectURL(url);
-  p29Log("Runway history exported ("+fmt.toUpperCase()+"): "+rows.length+" runways");
+function zevulunMergeRunwaySnapshot(archiveRows,liveRows,exportedAtMs){
+  return dedupeZevulunRunways([...(Array.isArray(archiveRows)?archiveRows:[]),...(Array.isArray(liveRows)?liveRows:[])])
+    .filter(r=>r.t1<=exportedAtMs).sort((a,b)=>a.t1-b.t1);
 }
-function clearRunwayHistory(){
-  if(!confirm("Permanently clear all runway history?"))return;
-  P32.history=[];
-  saveP32History();
-  p29Log("Runway history cleared");
-  updateDailySummary();
+function zevulunRunwayExportRecord(r,index){
+  const x=normalizeZevulunRunway(r);if(!x)return null;
+  const originTime=x.tOrigin||x.t0,peakTime=x.tpk||x.t1;
+  return {
+    sequence:index+1,runwayId:zevulunRunwayKey(x.t1),ledgerKey:x.t1,side:x.dir===1?"LONG":"SHORT",direction:x.dir,
+    originTimeMs:originTime,originTime:new Date(originTime).toISOString(),originTimeLocal:new Date(originTime).toLocaleString("en-GB"),
+    startTimeMs:x.t0,startTime:new Date(x.t0).toISOString(),startTimeLocal:new Date(x.t0).toLocaleString("en-GB"),
+    peakTimeMs:peakTime,peakTime:new Date(peakTime).toISOString(),peakTimeLocal:new Date(peakTime).toLocaleString("en-GB"),peakTimeEstimated:!!x.peakTimeEstimated,
+    completedTimeMs:x.t1,completedTime:new Date(x.t1).toISOString(),completedTimeLocal:new Date(x.t1).toLocaleString("en-GB"),
+    originTicks:x.origin,peakTicks:x.peak,completionTicks:x.completion,
+    originPrice:Number((x.origin/TICK_MULT).toFixed(7)),peakPrice:Number((x.peak/TICK_MULT).toFixed(7)),
+    completionPrice:x.completion?Number((x.completion/TICK_MULT).toFixed(7)):null,
+    extractedTicks:x.ext,durationMinutes:x.dur,anchoredToPriorFlip:!!x.anchored,rawLedgerData:{...x}
+  };
 }
-function updateDailySummary(legs){
-  const rows=(P32.history&&P32.history.length)?P32.history:(legs||extractAllLegs()).map(L=>({t0:CORE.t[L.start],t1:CORE.t[L.end],dir:L.dir,ext:Math.round(L.ext)}));
-  const today=new Date().toDateString();let L=0,S=0,tL=0,tS=0;
-  for(const r of rows){const t0=r.t0!=null?r.t0:CORE.t[r.start];if(t0==null||new Date(t0).toDateString()!==today)continue;
-    if(r.dir===1){L++;tL+=r.ext}else{S++;tS+=r.ext}}
-  const tot=L+S;
-  set("dailySummary",tot?("Today "+fmtDay(Date.now())+" · "+L+"L / "+S+"S · "+tot+" runways · extracted +"+Math.round(tL+tS)+"t"):"Today "+fmtDay(Date.now())+" · no completed runways yet");
+function zevulunRunwaySummary(runways){
+  const rows=Array.isArray(runways)?runways:[],longs=rows.filter(r=>r.side==="LONG").length,shorts=rows.length-longs,total=rows.reduce((s,r)=>s+(+r.extractedTicks||0),0);
+  return {totalCompletedRunways:rows.length,longCount:longs,shortCount:shorts,totalExtractedTicks:total,
+    averageExtractedTicks:rows.length?Math.round(total/rows.length):0,largestExtractionTicks:rows.reduce((m,r)=>Math.max(m,+r.extractedTicks||0),0),
+    longestDurationMinutes:rows.reduce((m,r)=>Math.max(m,+r.durationMinutes||0),0),firstRunwayStartedAt:rows.length?rows[0].startTime:null,
+    lastRunwayCompletedAt:rows.length?rows[rows.length-1].completedTime:null};
+}
+function zevulunFileStamp(ms){const d=new Date(ms),p=n=>String(n).padStart(2,"0");return d.getFullYear()+p(d.getMonth()+1)+p(d.getDate())+"_"+p(d.getHours())+p(d.getMinutes())+p(d.getSeconds())}
+function downloadZevulunFile(content,type,filename){
+  const blob=content instanceof Blob?content:new Blob([content],{type}),url=URL.createObjectURL(blob),a=document.createElement("a");
+  a.href=url;a.download=filename;a.rel="noopener";a.style.display="none";document.body.appendChild(a);a.click();
+  setTimeout(()=>{try{document.body.removeChild(a)}catch(e){}try{URL.revokeObjectURL(url)}catch(e){}},2000);
+}
+async function exportRunwayHistory(fmt){
+  const kind=String(fmt||"json").toLowerCase()==="txt"?"txt":"json",exportedAtMs=now();archiveLegs(extractAllLegs());
+  const live=archivedRows().slice().reverse();await zevulunArchiveRunways(live);const archive=await zevulunReadRunwayArchive();
+  const runways=zevulunMergeRunwaySnapshot(archive.rows,live,exportedAtMs).map(zevulunRunwayExportRecord).filter(Boolean);
+  if(!runways.length){p29Log("Export skipped · no completed runways yet");alert("No completed runways to export yet.");return}
+  const stamp=zevulunFileStamp(exportedAtMs),filename="zevulun_completed_runways_"+stamp+"."+kind;
+  if(kind==="txt"){
+    const lines=["ZEVULUN VELOCITY · Completed Runways","Exported UTC: "+new Date(exportedAtMs).toISOString(),"Symbol: "+PAPILLON_SYMBOL,"Total runways: "+runways.length,"", "side\tstart_utc\tpeak_utc\tcompleted_utc\torigin_price\tpeak_price\tcompletion_price\textracted_ticks\tduration_minutes"];
+    for(const r of runways)lines.push([r.side,r.startTime,r.peakTime,r.completedTime,r.originPrice.toFixed(7),r.peakPrice.toFixed(7),r.completionPrice==null?"":r.completionPrice.toFixed(7),r.extractedTicks,r.durationMinutes].join("\t"));
+    downloadZevulunFile(lines.join("\n"),"text/plain;charset=utf-8",filename);
+  }else downloadZevulunFile(JSON.stringify({schemaVersion:"ZEVULUN_COMPLETED_RUNWAYS_V2",exportedAt:new Date(exportedAtMs).toISOString(),symbol:PAPILLON_SYMBOL,totalRunways:runways.length,runwaySummary:zevulunRunwaySummary(runways),runways},null,2),"application/json;charset=utf-8",filename);
+  p29Log("Completed Runways exported ("+kind.toUpperCase()+"): "+runways.length+" deduplicated voyage(s)");
+}
+async function clearRunwayHistory(){
+  if(!confirm("Permanently clear all Zevulun completed-runway history?"))return;
+  P32.history=[];saveP32History();await zevulunClearRunwayArchive();p29Log("Completed Runways history cleared");updateDailySummary();pastListRender();
+}
+function updateDailySummary(rows){
+  const list=dedupeZevulunRunways(Array.isArray(rows)?rows:(P32.history||[])),today=new Date().toDateString();let L=0,S=0,tL=0,tS=0;
+  for(const r of list){if(new Date(r.t0).toDateString()!==today)continue;if(r.dir===1){L++;tL+=r.ext}else{S++;tS+=r.ext}}
+  const tot=L+S;set("dailySummary",tot?("Today "+fmtDay(Date.now())+" · "+L+"L / "+S+"S · "+tot+" runways · extracted +"+Math.round(tL+tS)+"t"):("Today "+fmtDay(Date.now())+" · no completed runways yet"));
 }
 function saveP32History(){
-  try{localStorage.setItem("P32_RUNWAY_HISTORY",JSON.stringify(P32.history||[]))}catch(e){p29Log("History save error")}
+  P32.history=dedupeZevulunRunways(P32.history||[]).slice(-ZEVULUN_RUNWAY_MEMORY_LIMIT);
+  try{localStorage.setItem(ZEVULUN_RUNWAY_MEMORY_KEY,JSON.stringify(P32.history))}catch(e){p29Log("Completed Runways memory save error")}
 }
 function loadP32History(){
-  try{P32.history=JSON.parse(localStorage.getItem("P32_RUNWAY_HISTORY")||"[]")}catch(e){P32.history=[]}
+  let rows=[];
+  try{rows=JSON.parse(localStorage.getItem(ZEVULUN_RUNWAY_MEMORY_KEY)||"[]")}catch(e){rows=[]}
+  if(!Array.isArray(rows)||!rows.length){
+    for(const key of ZEVULUN_LEGACY_RUNWAY_MEMORY_KEYS){try{const legacy=JSON.parse(localStorage.getItem(key)||"[]");if(Array.isArray(legacy)&&legacy.length){rows=legacy;break}}catch(e){}}
+  }
+  const before=Array.isArray(rows)?rows.length:0,normalized=dedupeZevulunRunways(rows);
+  zevulunArchiveRunways(normalized);P32.history=normalized.slice(-ZEVULUN_RUNWAY_MEMORY_LIMIT);saveP32History();
+  if(before>normalized.length)p29Log("Completed Runways memory repaired · removed "+(before-normalized.length)+" duplicate record(s)");
 }
-window.exportRunwayHistory=exportRunwayHistory;window.clearRunwayHistory=clearRunwayHistory;
+function zevulunSnapshotCandle(c){
+  const n=normalizeZevulunCandle(c,c&&c.src);if(!n)return null;return {...n};
+}
+function zevulunCandleAuthority(c){
+  const src=String(c&&c.src||"").toLowerCase();
+  if(src.includes("binance-kline"))return "AUTHORITATIVE_MINUTE_STREAM";
+  if(src.includes("binance-rest"))return "BINANCE_REST_RECONCILED";
+  if(src.includes("bingx-rest"))return "BINGX_REST_RECONCILED";
+  if(src.includes("rest"))return "REST_RECONCILED";
+  if(src.includes("pulse")||src.includes("aggtrade"))return "SYNTHETIC_LIVE_PULSE";
+  if(src.includes("memory")||src.includes("resume"))return "MEMORY_RESTORED";
+  return "UNCLASSIFIED";
+}
+function zevulunVolumeSemantics(c){return zevulunCandleAuthority(c)==="SYNTHETIC_LIVE_PULSE"?"PULSE_COUNT":"BASE_ASSET_VOLUME"}
+function zevulunCountBy(rows,pick){const out={};for(const row of rows){const k=String(pick(row)||"UNKNOWN");out[k]=(out[k]||0)+1}return out}
+function zevulunGapManifest(rows){
+  const gaps=[];let missingMinuteCount=0;
+  for(let i=1;i<rows.length;i++){const delta=+rows[i].timestampMs-(+rows[i-1].timestampMs);if(delta>60000){const missing=Math.floor(delta/60000)-1;if(missing>0){missingMinuteCount+=missing;gaps.push({after:new Date(rows[i-1].timestampMs).toISOString(),before:new Date(rows[i].timestampMs).toISOString(),missingMinutes:missing})}}}
+  return {detected:gaps.length>0,gapCount:gaps.length,missingMinuteCount,gaps};
+}
+function zevulunMergeCandleSnapshot(archiveRows,liveRows,exportedAtMs){
+  const map=new Map(),maxT=minuteBucket(exportedAtMs);
+  for(const raw of Array.isArray(archiveRows)?archiveRows:[]){const c=zevulunSnapshotCandle(raw);if(!c||c.t>maxT)continue;c.x=1;map.set(c.t,chooseZevulunCandle(map.get(c.t),c))}
+  for(const raw of Array.isArray(liveRows)?liveRows:[]){const c=zevulunSnapshotCandle(raw);if(!c||c.t>maxT)continue;if(!c.x)map.set(c.t,c);else map.set(c.t,chooseZevulunCandle(map.get(c.t),c))}
+  return Array.from(map.values()).sort((a,b)=>a.t-b.t);
+}
+async function makeZevulunJournalSnapshot(){
+  const exportedAtMs=now(),liveRows=P29.candles.map(c=>c?{...c}:c);
+  archiveLegs(extractAllLegs());const liveRunways=archivedRows().slice().reverse();
+  const journalContext={engineIgnitionLog:q("p32Ledger")?q("p32Ledger").textContent:"",fieldLog:q("reasonLog")?q("reasonLog").textContent:""};
+  await Promise.all([zevulunArchiveCandles(liveRows.filter(c=>c&&normalizeZevulunCandle(c,c.src)?.x)),zevulunArchiveRunways(liveRunways)]);
+  const [candleArchive,runwayArchive]=await Promise.all([zevulunReadCandleArchive(),zevulunReadRunwayArchive()]);
+  const merged=zevulunMergeCandleSnapshot(candleArchive.rows,liveRows,exportedAtMs);
+  const completedRunways=zevulunMergeRunwaySnapshot(runwayArchive.rows,liveRunways,exportedAtMs).map(zevulunRunwayExportRecord).filter(Boolean);
+  const runwaySummary=zevulunRunwaySummary(completedRunways);
+  const candles=merged.map(c=>({
+    timestampMs:c.t,openTime:new Date(c.t).toISOString(),closeTime:new Date(c.t+60000).toISOString(),
+    open:c.o,high:c.h,low:c.l,close:c.c,volume:c.v,volumeSemantics:zevulunVolumeSemantics(c),tradeCount:c.n,takerBuyVolume:c.tb,
+    closed:!!c.x,status:c.x?"CLOSED":"LIVE_PARTIAL",source:c.src,authority:zevulunCandleAuthority(c)
+  }));
+  const closed=candles.filter(c=>c.closed),partial=candles.filter(c=>!c.closed),first=candles[0]||null,last=candles[candles.length-1]||null,lastClosed=closed[closed.length-1]||null;
+  const gaps=zevulunGapManifest(candles),warnings=[];
+  if(partial.length)warnings.push("The LIVE_PARTIAL candle reflects Zevulun's feed state at the export click and can change until its minute closes.");
+  if(gaps.detected)warnings.push("Missing one-minute intervals were detected; see gapManifest.");
+  if(candleArchive.mode!=="persistent-indexeddb")warnings.push("Persistent candle archive was unavailable; candle export is limited to the current rolling engine window.");
+  if(runwayArchive.mode!=="persistent-indexeddb")warnings.push("Persistent voyage archive was unavailable; completedRunways is limited to the retained local Completed Runways memory.");
+  return {
+    schemaVersion:"ZEVULUN_JOURNAL_V2",title:"ZEVULUN VELOCITY · זבולון",exportedAt:new Date(exportedAtMs).toISOString(),exportedAtLocal:new Date(exportedAtMs).toLocaleString("en-GB"),
+    symbol:PAPILLON_SYMBOL,interval:"1m",snapshotSemantics:"The live candle window and Completed Runways memory were copied at the export click, then joined with Zevulun's persistent closed-candle and completed-voyage archives.",
+    summary:{totalCandles:candles.length,closedCandleCount:closed.length,livePartialCandleCount:partial.length,livePartialIncluded:partial.length>0,
+      firstCandleAt:first?first.openTime:null,lastCandleAt:last?last.openTime:null,lastClosedCandleAt:lastClosed?lastClosed.openTime:null,
+      expectedMinuteSlots:first&&last?Math.floor((last.timestampMs-first.timestampMs)/60000)+1:0,sourceCounts:zevulunCountBy(candles,c=>c.source),authorityCounts:zevulunCountBy(candles,c=>c.authority),
+      completedRunwayCount:runwaySummary.totalCompletedRunways,longRunwayCount:runwaySummary.longCount,shortRunwayCount:runwaySummary.shortCount,completedRunwayExtractedTicks:runwaySummary.totalExtractedTicks},
+    storage:{persistentCandleArchiveMode:candleArchive.mode,persistentArchivedClosedCandles:(candleArchive.rows||[]).length,engineRollingWindowCandles:liveRows.length,engineRollingWindowLimit:MAX_CANDLES,
+      persistentRunwayArchiveMode:runwayArchive.mode,persistentArchivedRunways:(runwayArchive.rows||[]).length,exportedCompletedRunways:completedRunways.length,retainedCompletedRunways:liveRunways.length,retainedCompletedRunwaysLimit:ZEVULUN_RUNWAY_MEMORY_LIMIT,
+      accumulationPolicy:"Closed one-minute candles and completed runways remain in Zevulun's IndexedDB archive until browser storage is cleared or browser quota prevents further storage. The active calculation window remains bounded for engine stability.",
+      archiveStartPolicy:"On first run of this revision, Zevulun backfills every closed candle and stable completed runway still available, then accumulates new closures going forward.",
+      candleArchiveFallbackError:candleArchive.error||null,runwayArchiveFallbackError:runwayArchive.error||null},
+    feed:{activeSource:IRON&&IRON.src?IRON.src:"BINGX",lastTickAt:P29.lastTickAt?new Date(P29.lastTickAt).toISOString():null,lastTickAgeSeconds:P29.lastTickAt?Math.max(0,Math.floor((exportedAtMs-P29.lastTickAt)/1000)):null,lastDepthAt:P29.lastDepthAt?new Date(P29.lastDepthAt).toISOString():null},
+    gapManifest:gaps,warnings,runwaySummary,completedRunways,journalContext,candles
+  };
+}
+function zevulunJournalTxt(snapshot){
+  const s=snapshot.summary,st=snapshot.storage,g=snapshot.gapManifest,rs=snapshot.runwaySummary||{},lines=[];
+  lines.push("ZEVULUN VELOCITY · JOURNAL · CANDLE WAKE + COMPLETED RUNWAYS · "+snapshot.symbol,"Exported UTC: "+snapshot.exportedAt,"Exported local: "+snapshot.exportedAtLocal,"Interval: "+snapshot.interval,
+    "Candles: "+s.totalCandles+" · closed "+s.closedCandleCount+" · live partial "+s.livePartialCandleCount,"Coverage: "+(s.firstCandleAt||"—")+" → "+(s.lastCandleAt||"—"),
+    "Completed runways: "+(rs.totalCompletedRunways||0)+" · "+(rs.longCount||0)+"L / "+(rs.shortCount||0)+"S · extracted +"+(rs.totalExtractedTicks||0)+"t",
+    "Persistent candle archive: "+st.persistentCandleArchiveMode+" · "+st.persistentArchivedClosedCandles+" closed candles",
+    "Persistent voyage archive: "+st.persistentRunwayArchiveMode+" · "+st.persistentArchivedRunways+" completed runways",
+    "Engine window: "+st.engineRollingWindowCandles+" / "+st.engineRollingWindowLimit,
+    "Gap manifest: "+(g.detected?(g.gapCount+" gap(s), "+g.missingMinuteCount+" missing minute(s)"):"no missing minute intervals detected"));
+  for(const warning of snapshot.warnings)lines.push("WARNING: "+warning);
+  lines.push("","=== CANDLES ===","open_time_utc\tstatus\topen\thigh\tlow\tclose\tvolume\tvolume_semantics\ttrade_count\ttaker_buy_volume\tsource\tauthority");
+  for(const c of snapshot.candles)lines.push([c.openTime,c.status,Number(c.open).toFixed(7),Number(c.high).toFixed(7),Number(c.low).toFixed(7),Number(c.close).toFixed(7),c.volume,c.volumeSemantics,c.tradeCount==null?"":c.tradeCount,c.takerBuyVolume==null?"":c.takerBuyVolume,c.source,c.authority].join("\t"));
+  if(g.detected){lines.push("","=== GAP MANIFEST ===","after_utc\tbefore_utc\tmissing_minutes");for(const gap of g.gaps)lines.push([gap.after,gap.before,gap.missingMinutes].join("\t"))}
+  lines.push("","=== COMPLETED RUNWAYS ===","sequence\trunway_id\tside\torigin_utc\tconfirmed_start_utc\tpeak_utc\tcompleted_utc\torigin_price\tpeak_price\tcompletion_price\textracted_ticks\tduration_minutes\traw_ledger_json");
+  for(const r of snapshot.completedRunways||[])lines.push([r.sequence,r.runwayId,r.side,r.originTime,r.startTime,r.peakTime,r.completedTime,r.originPrice.toFixed(7),r.peakPrice.toFixed(7),r.completionPrice==null?"":r.completionPrice.toFixed(7),r.extractedTicks,r.durationMinutes,JSON.stringify(r.rawLedgerData)].join("\t"));
+  if(!(snapshot.completedRunways||[]).length)lines.push("(no completed runways at export time)");
+  lines.push("","=== ENGINE IGNITION LOG AT EXPORT ===",snapshot.journalContext.engineIgnitionLog||"(empty)","","=== FIELD LOG AT EXPORT ===",snapshot.journalContext.fieldLog||"(empty)");return lines.join("\n");
+}
+async function exportZevulunJournal(fmt){
+  const kind=String(fmt||"json").toLowerCase()==="txt"?"txt":"json";
+  try{
+    const snapshot=await makeZevulunJournalSnapshot();if(!snapshot.candles.length&&!snapshot.completedRunways.length){alert("No Zevulun candles or completed runways are available to export yet.");return}
+    const stamp=zevulunFileStamp(Date.parse(snapshot.exportedAt)),filename="zevulun_journal_"+stamp+"."+kind;
+    if(kind==="txt")downloadZevulunFile(zevulunJournalTxt(snapshot),"text/plain;charset=utf-8",filename);
+    else downloadZevulunFile(JSON.stringify(snapshot,null,2),"application/json;charset=utf-8",filename);
+    p29Log("Journal "+kind.toUpperCase()+" exported · "+snapshot.summary.totalCandles+" candles · "+snapshot.summary.completedRunwayCount+" completed runway(s)");
+  }catch(e){const msg=e&&e.message?e.message:String(e);p29Log("Journal export failed · "+msg);alert("Zevulun Journal export failed: "+msg)}
+}
+window.exportRunwayHistory=exportRunwayHistory;window.clearRunwayHistory=clearRunwayHistory;window.exportZevulunJournal=exportZevulunJournal;
 
 /* ==== P33 IRON BLOODSTREAM · diagnostics + failover (own layer; lifted feed untouched) ==== */
 const IRON={src:"BINGX",binWs:null,everTick:false,failMs:20000};
@@ -1113,7 +1508,7 @@ function p33OpenFailover(){
     if((s&&s.indexOf("aggTrade")>=0)||x.e==="aggTrade"){
       const p=parseFloat(x.p);
       if(p>0){P29.prevPrice=P29.price;P29.price=p;P29.lastTickAt=now();IRON.everTick=true;
-        updatePapillonCandle(p,+x.T||now());savePapillonCandles();}
+        updatePapillonCandle(p,+x.T||now(),"binance-aggtrade");savePapillonCandles();}
     }else{
       const bids=x.b||x.bids, asks=x.a||x.asks;
       if(Array.isArray(bids)&&Array.isArray(asks)&&bids.length&&asks.length)
@@ -1141,12 +1536,13 @@ const ZV={
   p:null, tilt:0, lean:"—", veto:false, lastLean:"", lastVeto:false, why:"flow leg connecting"
 };
 function zvHazardFor(age){if(age<60)return{b:"1-60m",p:ZV.hazard["1-60m"]};if(age<240)return{b:"60-240m",p:ZV.hazard["60-240m"]};if(age<720)return{b:"240-720m",p:ZV.hazard["240-720m"]};return{b:">720m",p:ZV.hazard[">720m"]}}
-function zvApplyKline(k){const t=Math.floor(+k.t/60000)*60000;const inc={t,h:+k.h,l:+k.l,c:+k.c,v:+k.v,tb:+k.V||0,x:!!k.x};
+function zvApplyKline(k){
+  const t=Math.floor(+k.t/60000)*60000,inc={t,o:+k.o,h:+k.h,l:+k.l,c:+k.c,v:+k.v,n:Number.isFinite(+k.n)?+k.n:null,tb:Number.isFinite(+k.V)?+k.V:null,x:!!k.x,src:"binance-kline"};
   let c=ZV.map.get(t);
-  if(!c){ZV.map.set(t,inc);ZV.candles.push(inc);ZV.candles.sort((a,b)=>a.t-b.t);
-    if(ZV.candles.length>90){const o=ZV.candles.shift();ZV.map.delete(o.t)}}
-  else{c.h=Math.max(c.h,inc.h);c.l=Math.min(c.l,inc.l);c.c=inc.c;c.v=inc.v;c.tb=inc.tb;c.x=inc.x}
-  if(inc.x)zvCompute();}
+  if(!c){ZV.map.set(t,inc);ZV.candles.push(inc);ZV.candles.sort((a,b)=>a.t-b.t);if(ZV.candles.length>90){const old=ZV.candles.shift();ZV.map.delete(old.t)}}
+  else{c.o=inc.o;c.h=Math.max(c.h,inc.h);c.l=Math.min(c.l,inc.l);c.c=inc.c;c.v=inc.v;c.n=inc.n;c.tb=inc.tb;c.x=inc.x}
+  upsertZevulunCandle(inc);savePapillonCandles();if(inc.x)zvCompute();
+}
 function zvCompute(){
   const cc=ZV.candles.filter(c=>c.x);const n=cc.length;
   if(n<41){ZV.p=null;ZV.why="flow memory "+n+"/41";return}
@@ -1401,7 +1797,8 @@ async function start(){
   updateDailySummary();
   render();
   await bootstrapPapillonCandles();
-  if(P29.candles.length) P29.candles=P29.candles.map(cd=>Object.assign({src:"rest"},cd));
+  if(P29.candles.length)P29.candles=P29.candles.map(cd=>normalizeZevulunCandle(cd,cd.src||"zevulun-memory")).filter(Boolean);
+  await Promise.all([zevulunArchiveCandles(P29.candles.filter(c=>c&&c.x)),zevulunArchiveRunways(archivedRows())]);
   await p33OpenPrimary();
   zvConnectFlow();
   render();
@@ -1424,6 +1821,7 @@ async function start(){
 }
 window.exportP32Evidence=exportP32Evidence; window.clearP32Evidence=clearP32Evidence;
 window.__P33={get P29(){return P29},get P32(){return P32},get CORE(){return CORE},get M(){return M},render,scanField,rebuildSeries};
+window.__ZEVULUN_JOURNAL={snapshot:makeZevulunJournalSnapshot,readCandleArchive:zevulunReadCandleArchive,readRunwayArchive:zevulunReadRunwayArchive,dedupeRunways:dedupeZevulunRunways};
 start();
 })();
 </script>
